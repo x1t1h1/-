@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>理想气体多变过程 p–v 与 T–s 图交互仿真</title>
+<style>
+  :root{ --ink:#111; --grid:#e6e6e6; --gray:#8a8a8a; --mid:#c7c7c7; --bg:#fff; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Times New Roman","宋体",SimSun,serif; color:var(--ink); background:var(--bg); }
+  .wrap{ max-width:1080px; margin:0 auto; padding:24px 20px 48px; }
+
+  header h1{ font-size:26px; margin:0 0 4px; font-weight:700; letter-spacing:.5px; }
+  header .sub{ color:#555; font-size:14px; margin-bottom:6px; }
+
+  .desc{ font-size:13.5px; line-height:1.75; color:#333;
+         border-left:3px solid #000; padding-left:12px; margin:14px 0 18px; }
+
+  .controls{ display:flex; flex-wrap:wrap; align-items:center; gap:14px 18px;
+             margin:6px 0 18px; padding:12px 16px; border:1px solid #d8d8d8; background:#fafafa; }
+  .presets{ display:flex; flex-wrap:wrap; gap:6px; }
+  .presets button{ font-family:inherit; font-size:13px; padding:4px 12px; cursor:pointer;
+                   background:#fff; color:var(--ink); border:1px solid #000; }
+  .presets button:hover{ background:#f0f0f0; }
+  .presets button.active{ background:#000; color:#fff; }
+  .controls label{ font-size:14px; }
+  .controls input[type=range]{ width:260px; max-width:55vw; }
+  .readout{ font-size:14px; } .readout b{ font-size:16px; }
+
+  .charts{ display:flex; gap:18px; flex-wrap:wrap; }
+  .chart{ flex:1 1 440px; min-width:320px; }
+  .chart h2{ font-size:15px; margin:0 0 6px; font-weight:700; text-align:center; }
+  .chart canvas{ width:100%; height:460px; display:block; background:#fff;
+                 border:1px solid #e0e0e0; cursor:crosshair; }
+
+  .result{ margin:16px 0 0 0; padding:14px 18px; border:1px solid #000; background:#fcfcfc;
+           max-width:520px; margin-left:auto; }
+  .result h3{ margin:0 0 10px; font-size:14px; }
+  .result .row{ font-size:14.5px; line-height:1.9; }
+  .result .row b{ font-size:16px; }
+  .result .sign{ font-size:16px; font-weight:700; letter-spacing:1px; margin-top:4px; }
+  .result .state{ font-size:12.5px; color:#555; margin-top:6px; }
+
+  .legend{ margin:18px 0 0; font-size:13px; line-height:1.9; color:#333;
+           border-top:1px solid #e0e0e0; padding-top:12px; }
+  .legend .hint{ font-size:12px; color:#666; margin-top:6px; }
+
+  @media (max-width:640px){
+    .chart canvas{ height:390px; }
+    .controls input[type=range]{ width:100%; max-width:none; }
+    .result{ margin-left:0; max-width:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>理想气体的多变过程：p–v 图 与 T–s 图</h1>
+    <div class="sub">工程热力学 · 多变过程 p·vⁿ = 定值（工质取空气，κ = 1.4）</div>
+  </header>
+
+  <p class="desc">
+    四条基准多变曲线均<b>通过同一初始状态点 1</b>：<b>n = 0</b> 定压过程、<b>n = 1</b> 定温过程、
+    <b>n = κ</b> 定熵（可逆绝热）过程、<b>n = ∞</b> 定容过程。
+    过程由状态 1 沿当前多变曲线进行到状态 2；<b>w &gt; 0</b> 表示膨胀对外作功（v 增大），
+    <b>q &gt; 0</b> 表示吸热。理想气体：Δu = c<sub>v</sub>(T₂−T₁)，q = Δu + w。
+  </p>
+
+  <div class="controls">
+    <div class="presets" id="presets">
+      <button data-n="0">n = 0 定压</button>
+      <button data-n="1">n = 1 定温</button>
+      <button data-n="1.4">n = κ 定熵</button>
+      <button data-n="inf">n = ∞ 定容</button>
+    </div>
+    <label for="nSlider">多变指数 n：</label>
+    <input type="range" id="nSlider" min="-3" max="8" step="0.05" value="1.2" />
+    <span class="readout">n = <b id="nReadout">1.20</b></span>
+  </div>
+
+  <div class="charts">
+    <div class="chart">
+      <h2>p–v 图</h2>
+      <canvas id="cvPV"></canvas>
+    </div>
+    <div class="chart">
+      <h2>T–s 图</h2>
+      <canvas id="cvTS"></canvas>
+    </div>
+  </div>
+
+  <div class="result">
+    <h3>过程 1 → 2 的能量分析</h3>
+    <div class="row">多变指数 <b>n = <span id="oN">1.20</span></b></div>
+    <div class="row">
+      内能变化 <b>Δu = <span id="oDu">+0.0</span> kJ/kg</b>，
+      膨胀功 <b>w = <span id="oW">+0.0</span> kJ/kg</b>，
+      热量 <b>q = <span id="oQ">+0.0</span> kJ/kg</b>
+    </div>
+    <div class="sign" id="signLine">Δu&gt;0，w&gt;0，q&gt;0</div>
+    <div class="state" id="stateLine">状态1：… ｜ 状态2：…</div>
+  </div>
+
+  <div class="legend">
+    <div class="hint">
+      操作：单击下方按钮切换基准过程，或拖动滑块连续调节 n；在 <b>p–v 图</b> 上
+      拖动 <b>状态点 1</b>（实心圆，自由移动）与 <b>状态点 2</b>（箭头，沿当前多变线滑动），
+      两图与能量结果实时同步。曲线以状态点 1 为公共起点向外发散。
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+ * 1. 工质物性（空气）与常量
+ * ===================================================================== */
+const R     = 0.287;   // 气体常数 kJ/(kg·K)
+const KAPPA = 1.4;     // 比热比 κ = c_p / c_v
+const CV    = R/(KAPPA-1);   // 定容比热 = 0.7175 kJ/(kg·K)
+const CP    = KAPPA*CV;      // 定压比热 = 1.0045 kJ/(kg·K)
+const T0    = 298.15;        // 熵参考温度 K
+const P0    = 101.325;       // 熵参考压力 kPa
+
+/* 绘图区域（数据坐标） */
+const V_MIN = 0.05, V_MAX = 1.5;      // 比容 m³/kg
+const P_MAX = 800;                    // 压力 kPa
+const T_MIN = 150, T_MAX = 950;       // 温度 K
+const S_MIN = -1.0, S_MAX = 1.2;      // 比熵 kJ/(kg·K)
+
+/* 四条基准多变过程 */
+const BENCH = [
+  { n:0,         name:'定压', tag:'n=0'  },
+  { n:1,         name:'定温', tag:'n=1'  },
+  { n:KAPPA,     name:'定熵', tag:'n=κ'  },
+  { n:Infinity,  name:'定容', tag:'n=∞'  },
+];
+
+/* =====================================================================
+ * 2. 状态与多变过程计算
+ * ===================================================================== */
+const state = { n:1.2, p1:200, v1:0.5, v2:0.8, p2inf:300, dragging:null };
+
+function clamp(x, lo, hi){ return Math.min(Math.max(x, lo), hi); }
+
+function getT1(){ return state.p1*state.v1/R; }
+function getS1(){ return CP*Math.log(getT1()/T0) - R*Math.log(state.p1/P0); }
+
+/* 终点状态 2：有限 n 由 v2 定位（p2 由多变式算出），n=∞ 时 v2=v1、p2 自由 */
+function getP2(){
+  if (state.n === Infinity){
+    const v = state.v1, p = clamp(state.p2inf, 5, P_MAX);
+    return { v, p, T: p*v/R };
+  }
+  const v = clamp(state.v2, V_MIN, V_MAX);
+  const p = state.p1*Math.pow(state.v1/v, state.n);
+  return { v, p, T: p*v/R };
+}
+
+/* 全过程能量分析 */
+function calc(){
+  const p1 = state.p1, v1 = state.v1, T1 = p1*v1/R;
+  const s1 = CP*Math.log(T1/T0) - R*Math.log(p1/P0);
+  const P2 = getP2(), p2 = P2.p, v2 = P2.v, T2 = P2.T;
+  const s2 = CP*Math.log(T2/T0) - R*Math.log(p2/P0);
+
+  const du = CV*(T2 - T1);
+  let w;
+  if (state.n === Infinity)      w = 0;                     // 定容，不作膨胀功
+  else if (Math.abs(state.n-1) < 1e-6) w = R*T1*Math.log(v2/v1);   // 定温
+  else                            w = (p2*v2 - p1*v1)/(1 - state.n);
+  const q = du + w;
+
+  return { n:state.n, du, w, q, p1, v1, T1, s1, p2, v2, T2, s2 };
+}
+
+/* 多变比热 c_n = c_v (n-κ)/(n-1)（n≠1） */
+function cn(n){ return CV*(n - KAPPA)/(n - 1); }
+
+/* p–v 曲线采样 */
+function pvCurve(n){
+  const xs = [], ys = [];
+  if (n === Infinity){                       // 定容：竖直线 v = v1
+    return { xs:[state.v1, state.v1], ys:[P_MAX, 0] };
+  }
+  const N = 260;
+  for (let i = 0; i <= N; i++){
+    const v = V_MIN + (V_MAX - V_MIN)*i/N;
+    xs.push(v);
+    ys.push(state.p1*Math.pow(state.v1/v, n));
+  }
+  return { xs, ys };
+}
+
+/* T–s 曲线采样 */
+function tsCurve(n){
+  const T1 = getT1(), s1 = getS1();
+  const xs = [], ys = [];
+  const N = 260;
+  if (n === Infinity){                        // 定容：s = s1 + c_v ln(T/T1)
+    for (let i = 0; i <= N; i++){
+      const T = T_MIN + (T_MAX - T_MIN)*i/N;
+      xs.push(s1 + CV*Math.log(T/T1)); ys.push(T);
+    }
+  } else if (Math.abs(n-1) < 1e-6){           // 定温：水平线 T = T1
+    xs.push(s1 + R*Math.log(V_MIN/state.v1), s1 + R*Math.log(V_MAX/state.v1));
+    ys.push(T1, T1);
+  } else if (Math.abs(n-KAPPA) < 1e-6){       // 定熵：竖直线 s = s1
+    xs.push(s1, s1); ys.push(T_MIN, T_MAX);
+  } else {                                    // 一般多变
+    const c = cn(n);
+    for (let i = 0; i <= N; i++){
+      const T = T_MIN + (T_MAX - T_MIN)*i/N;
+      xs.push(s1 + c*Math.log(T/T1)); ys.push(T);
+    }
+  }
+  return { xs, ys };
+}
+
+/* =====================================================================
+ * 3. 绘图基础
+ * ===================================================================== */
+class Chart{
+  constructor(canvas){
+    this.cv = canvas; this.ctx = canvas.getContext('2d');
+    this.m = { l:60, r:18, t:20, b:44 };
+  }
+  setXDomain(min, max){ this.xLo=min; this.xHi=max; }
+  setYDomain(min, max){ this.yLo=min; this.yHi=max; }
+  resize(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.cv.clientWidth, h = this.cv.clientHeight;
+    this.cv.width  = Math.max(1, Math.round(w*dpr));
+    this.cv.height = Math.max(1, Math.round(h*dpr));
+    this.dpr = dpr; this.w = w; this.h = h;
+    this.pw = w - this.m.l - this.m.r;
+    this.ph = h - this.m.t - this.m.b;
+  }
+  xToPx(x){ return this.m.l + (x - this.xLo)/(this.xHi - this.xLo)*this.pw; }
+  yToPx(y){ return this.m.t + (this.yHi - y)/(this.yHi - this.yLo)*this.ph; }
+  pxToX(px){ return this.xLo + (px - this.m.l)/this.pw*(this.xHi - this.xLo); }
+  pyToY(py){ return this.yHi - (py - this.m.t)/this.ph*(this.yHi - this.yLo); }
+  clear(){
+    const c = this.ctx;
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.clearRect(0, 0, this.w, this.h);
+  }
+  clipPlot(){ this.ctx.save(); this.ctx.beginPath();
+              this.ctx.rect(this.m.l, this.m.t, this.pw, this.ph); this.ctx.clip(); }
+  unclip(){ this.ctx.restore(); }
+}
+
+function linTicks(min, max, step){
+  const out = [];
+  for (let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step) out.push(v);
+  return out;
+}
+function fmt(v){
+  if (v === 0) return '0';
+  return String(parseFloat(v.toPrecision(4)));
+}
+
+function drawAxes(chart, xLabel, yLabel, xTicks, yTicks){
+  const c = chart.ctx, m = chart.m;
+  c.save();
+  c.strokeStyle = '#111'; c.lineWidth = 1;
+  c.strokeRect(m.l, m.t, chart.pw, chart.ph);
+  c.strokeStyle = '#e6e6e6'; c.lineWidth = 1;
+  c.fillStyle = '#444'; c.font = '11px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  xTicks.forEach(function(v){
+    const x = chart.xToPx(v);
+    c.beginPath(); c.moveTo(x, m.t); c.lineTo(x, m.t + chart.ph); c.stroke();
+    c.fillText(fmt(v), x, m.t + chart.ph + 6);
+  });
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  yTicks.forEach(function(v){
+    const y = chart.yToPx(v);
+    c.beginPath(); c.moveTo(m.l, y); c.lineTo(m.l + chart.pw, y); c.stroke();
+    c.fillText(fmt(v), m.l - 6, y);
+  });
+  c.fillStyle = '#111'; c.font = '13px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.fillText(xLabel, m.l + chart.pw/2, chart.h - 10);
+  c.save();
+  c.translate(12, m.t + chart.ph/2); c.rotate(-Math.PI/2);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(yLabel, 0, 0);
+  c.restore();
+  c.restore();
+}
+
+function plotLine(chart, xs, ys, color, width){
+  const c = chart.ctx;
+  c.save();
+  c.strokeStyle = color; c.lineWidth = width || 1;
+  c.beginPath();
+  for (let i = 0; i < xs.length; i++){
+    const x = chart.xToPx(xs[i]), y = chart.yToPx(ys[i]);
+    if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+  }
+  c.stroke();
+  c.restore();
+}
+
+function label(chart, x, y, text, o){
+  o = o || {};
+  const px = chart.xToPx(x) + (o.x || 0), py = chart.yToPx(y) + (o.y || 0);
+  const c = chart.ctx;
+  c.save();
+  c.font = (o.bold ? '700 ' : '') + (o.size || 12) + 'px "Times New Roman",serif';
+  c.textAlign = o.align || 'left'; c.textBaseline = o.baseline || 'middle';
+  c.lineWidth = 3; c.strokeStyle = '#fff'; c.lineJoin = 'round';
+  c.strokeText(text, px, py);
+  c.fillStyle = o.color || '#000'; c.fillText(text, px, py);
+  c.restore();
+}
+
+/* 状态点 1：实心圆 + 编号 */
+function drawPoint1(chart, x, y){
+  const c = chart.ctx, px = chart.xToPx(x), py = chart.yToPx(y);
+  c.beginPath(); c.arc(px, py, 5, 0, Math.PI*2);
+  c.fillStyle = '#000'; c.fill();
+  c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
+  label(chart, x, y, '1', { x:-12, y:-10, bold:true });
+}
+
+/* 状态点 2：箭头（方向 = 过程进行方向 1→2）+ 编号 */
+function drawPoint2(chart, x2, y2, x1, y1){
+  const c = chart.ctx;
+  const px = chart.xToPx(x2), py = chart.yToPx(y2);
+  const qx = chart.xToPx(x1), qy = chart.yToPx(y1);
+  const ang = Math.atan2(py - qy, px - qx);
+  c.save();
+  c.translate(px, py); c.rotate(ang);
+  c.beginPath(); c.moveTo(0, 0); c.lineTo(-11, -5); c.lineTo(-11, 5); c.closePath();
+  c.fillStyle = '#000'; c.fill();
+  c.restore();
+  label(chart, x2, y2, '2', { x:14, y:-10, bold:true });
+}
+
+/* 基准曲线标注锚点（p–v 图） */
+function pvAnchor(n){
+  if (n === Infinity) return { v:state.v1, p:P_MAX*0.70 };
+  const v = Math.min(state.v1*2, V_MAX);
+  const p = clamp(state.p1*Math.pow(state.v1/v, n), 8, P_MAX*0.95);
+  return { v, p };
+}
+/* 基准曲线标注锚点（T–s 图） */
+function tsAnchor(n){
+  const T1 = getT1(), s1 = getS1();
+  if (n === Infinity){ const T = Math.min(T1+220, T_MAX); return { s:s1 + CV*Math.log(T/T1), T }; }
+  if (Math.abs(n-1) < 1e-6){ const s = s1 + R*Math.log(Math.min(state.v1*2, V_MAX)/state.v1); return { s, T:T1 }; }
+  if (Math.abs(n-KAPPA) < 1e-6){ return { s:s1, T:Math.min(T1+260, T_MAX) }; }
+  const c = cn(n), T = Math.min(T1+220, T_MAX);
+  return { s:s1 + c*Math.log(T/T1), T };
+}
+
+function sameN(a, b){
+  if (a === Infinity || b === Infinity) return a === b;
+  return Math.abs(a - b) < 1e-6;
+}
+
+/* =====================================================================
+ * 4. 两图绘制
+ * ===================================================================== */
+const chartPV = new Chart(document.getElementById('cvPV'));
+const chartTS = new Chart(document.getElementById('cvTS'));
+
+function renderPV(){
+  const ch = chartPV;
+  ch.setXDomain(V_MIN, V_MAX); ch.setYDomain(0, P_MAX);
+  ch.clear();
+  drawAxes(ch, '比容 v / (m³·kg⁻¹)', '压力 p / kPa',
+           linTicks(V_MIN, V_MAX, 0.25), linTicks(0, P_MAX, 200));
+
+  ch.clipPlot();
+  // 四条基准曲线（浅灰）
+  BENCH.forEach(function(b){
+    const c = pvCurve(b.n);
+    plotLine(ch, c.xs, c.ys, sameN(b.n, state.n) ? '#000' : '#c7c7c7', sameN(b.n, state.n) ? 2 : 1);
+  });
+  // 当前 n 曲线（黑色，若非基准值）
+  if (!BENCH.some(function(b){ return sameN(b.n, state.n); })){
+    const c = pvCurve(state.n);
+    plotLine(ch, c.xs, c.ys, '#000', 2);
+  }
+  ch.unclip();
+
+  // 基准曲线名称（当前 n 与某基准重合时不重复标注其灰名）
+  BENCH.forEach(function(b){
+    if (sameN(b.n, state.n)) return;
+    const a = pvAnchor(b.n);
+    label(ch, a.v, a.p, b.name + ' ' + b.tag, { x:8, y:-8, color:'#9a9a9a', size:11 });
+  });
+  // 当前 n 标注
+  const a = pvAnchor(state.n);
+  label(ch, a.v, a.p, 'n = ' + (state.n === Infinity ? '∞' : state.n.toFixed(2)),
+        { x:8, y:-8, color:'#000', bold:true, size:12 });
+
+  // 状态点与过程方向
+  const r = calc();
+  drawPoint1(ch, r.v1, r.p1);
+  drawPoint2(ch, r.v2, r.p2, r.v1, r.p1);
+}
+
+function renderTS(){
+  const ch = chartTS;
+  ch.setXDomain(S_MIN, S_MAX); ch.setYDomain(T_MIN, T_MAX);
+  ch.clear();
+  drawAxes(ch, '比熵 s / (kJ·kg⁻¹·K⁻¹)', '温度 T / K',
+           linTicks(S_MIN, S_MAX, 0.4), linTicks(T_MIN, T_MAX, 150));
+
+  ch.clipPlot();
+  BENCH.forEach(function(b){
+    const c = tsCurve(b.n);
+    plotLine(ch, c.xs, c.ys, sameN(b.n, state.n) ? '#000' : '#c7c7c7', sameN(b.n, state.n) ? 2 : 1);
+  });
+  if (!BENCH.some(function(b){ return sameN(b.n, state.n); })){
+    const c = tsCurve(state.n);
+    plotLine(ch, c.xs, c.ys, '#000', 2);
+  }
+  ch.unclip();
+
+  BENCH.forEach(function(b){
+    if (sameN(b.n, state.n)) return;
+    const a = tsAnchor(b.n);
+    label(ch, a.s, a.T, b.name + ' ' + b.tag, { x:8, y:-8, color:'#9a9a9a', size:11 });
+  });
+  const a = tsAnchor(state.n);
+  label(ch, a.s, a.T, 'n = ' + (state.n === Infinity ? '∞' : state.n.toFixed(2)),
+        { x:8, y:-8, color:'#000', bold:true, size:12 });
+
+  const r = calc();
+  drawPoint1(ch, r.s1, r.T1);
+  drawPoint2(ch, r.s2, r.T2, r.s1, r.T1);
+}
+
+/* =====================================================================
+ * 5. 结果输出与交互
+ * ===================================================================== */
+function fmtKJ(v){ return (Math.abs(v) < 0.05) ? '0' : ((v > 0 ? '+' : '−') + Math.abs(v).toFixed(1)); }
+function fmtSign(v){ const a = Math.abs(v); return a < 0.05 ? '=0' : (v > 0 ? '>0' : '<0'); }
+
+function updateResult(){
+  const r = calc();
+  document.getElementById('nReadout').textContent = r.n === Infinity ? '∞' : r.n.toFixed(2);
+  document.getElementById('oN').textContent = r.n === Infinity ? '∞' : r.n.toFixed(2);
+  document.getElementById('oDu').textContent = fmtKJ(r.du);
+  document.getElementById('oW').textContent = fmtKJ(r.w);
+  document.getElementById('oQ').textContent = fmtKJ(r.q);
+  document.getElementById('signLine').textContent =
+    'Δu' + fmtSign(r.du) + '，w' + fmtSign(r.w) + '，q' + fmtSign(r.q);
+  document.getElementById('stateLine').textContent =
+    '状态1：p₁=' + r.p1.toFixed(1) + ' kPa，v₁=' + r.v1.toFixed(3) + ' m³/kg，T₁=' + r.T1.toFixed(1) + ' K　|　' +
+    '状态2：p₂=' + r.p2.toFixed(1) + ' kPa，v₂=' + r.v2.toFixed(3) + ' m³/kg，T₂=' + r.T2.toFixed(1) + ' K';
+}
+
+function render(){
+  chartPV.resize(); chartTS.resize();
+  renderPV(); renderTS(); updateResult();
+}
+
+/* 设置多变指数（含 ∞ 与有限 n 之间的状态点 2 迁移） */
+function setN(n){
+  const wasInf = (state.n === Infinity);
+  if (n === Infinity){
+    if (!wasInf) state.p2inf = getP2().p;      // 冻结当前终点压力作为定容终点
+    state.n = Infinity;
+  } else {
+    if (wasInf) state.v2 = clamp(state.v1*1.6, V_MIN, V_MAX);   // 离开定容时给默认膨胀比
+    state.n = n;
+  }
+  render();
+}
+
+const nSlider = document.getElementById('nSlider');
+nSlider.addEventListener('input', function(){
+  const wasInf = (state.n === Infinity);
+  state.n = parseFloat(nSlider.value);
+  if (wasInf) state.v2 = clamp(state.v1*1.6, V_MIN, V_MAX);
+  render();
+});
+
+document.getElementById('presets').addEventListener('click', function(e){
+  const btn = e.target.closest('button'); if (!btn) return;
+  const v = btn.getAttribute('data-n');
+  setN(v === 'inf' ? Infinity : parseFloat(v));
+});
+
+/* 拖拽：状态点 1 自由移动；状态点 2 沿当前多变线滑动 */
+function canvasPos(e){ const r = e.target.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+function nearPoint(pos){
+  const P2 = getP2();
+  const d1 = Math.hypot(pos.x - chartPV.xToPx(state.v1), pos.y - chartPV.yToPx(state.p1));
+  const d2 = Math.hypot(pos.x - chartPV.xToPx(P2.v), pos.y - chartPV.yToPx(P2.p));
+  if (d1 < 12) return 'p1';
+  if (d2 < 12) return 'p2';
+  return null;
+}
+
+chartPV.cv.addEventListener('mousedown', function(e){
+  const pos = canvasPos(e);
+  state.dragging = nearPoint(pos);
+  if (state.dragging) render();
+});
+
+chartPV.cv.addEventListener('mousemove', function(e){
+  const pos = canvasPos(e);
+  if (state.dragging === 'p1'){
+    state.v1 = clamp(chartPV.pxToX(pos.x), V_MIN, V_MAX);
+    state.p1 = clamp(chartPV.pyToY(pos.y), 20, P_MAX);
+    render();
+  } else if (state.dragging === 'p2'){
+    if (state.n === Infinity) state.p2inf = clamp(chartPV.pyToY(pos.y), 5, P_MAX);
+    else state.v2 = clamp(chartPV.pxToX(pos.x), V_MIN, V_MAX);
+    render();
+  } else {
+    chartPV.cv.style.cursor = nearPoint(pos) ? 'grab' : 'crosshair';
+  }
+});
+
+window.addEventListener('mouseup', function(){ state.dragging = null; });
+chartPV.cv.addEventListener('mouseleave', function(){ state.dragging = null; });
+
+window.addEventListener('resize', render);
+render();
+
+})();
+</script>
+</body>
+</html>

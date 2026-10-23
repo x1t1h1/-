@@ -1,6 +1,9 @@
 import type { SimulationModel } from './types'
 import { carnotCycleModel } from './models/carnotCycle'
 import { idealGasProcessModels } from './models/idealGasProcesses'
+import { waterSteamModel } from './models/waterSteam'
+import { polytropicProcessModel } from './models/polytropicProcess'
+import { psychrometricChartModel } from './models/psychrometricChart'
 
 /**
  * 仿真模型注册表。
@@ -10,6 +13,9 @@ import { idealGasProcessModels } from './models/idealGasProcesses'
 export const simulationModels: SimulationModel[] = [
   carnotCycleModel,
   ...idealGasProcessModels,
+  waterSteamModel,
+  polytropicProcessModel,
+  psychrometricChartModel,
 ]
 
 const byId = new Map<string, SimulationModel>()
@@ -20,7 +26,7 @@ for (const model of simulationModels) {
   }
   byId.set(model.id, model)
 
-  for (const parameter of model.parameters) {
+  for (const parameter of model.parameters ?? []) {
     if (parameter.type === 'select') continue
     const value = Number(parameter.default)
     if (!Number.isFinite(value)) {

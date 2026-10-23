@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>水蒸气 p–v 与 T–s 图交互仿真</title>
+<style>
+  :root{ --ink:#111; --grid:#e6e6e6; --gray:#8a8a8a; --mid:#c7c7c7; --bg:#fff; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Times New Roman","宋体",SimSun,serif; color:var(--ink); background:var(--bg); }
+  .wrap{ max-width:1080px; margin:0 auto; padding:24px 20px 48px; }
+
+  header h1{ font-size:26px; margin:0 0 4px; font-weight:700; letter-spacing:.5px; }
+  header .sub{ color:#555; font-size:14px; margin-bottom:6px; }
+
+  .desc{ font-size:13.5px; line-height:1.75; color:#333;
+         border-left:3px solid #000; padding-left:12px; margin:14px 0 18px; }
+
+  .controls{ display:flex; flex-wrap:wrap; align-items:center; gap:16px;
+             margin:6px 0 18px; padding:12px 16px; border:1px solid #d8d8d8; background:#fafafa; }
+  .controls label{ font-size:14px; }
+  .controls input[type=range]{ width:320px; max-width:62vw; }
+  .ctrl-readout{ font-size:14px; }
+  .ctrl-readout b{ font-size:16px; }
+
+  .charts{ display:flex; gap:18px; flex-wrap:wrap; }
+  .chart{ flex:1 1 440px; min-width:320px; }
+  .chart h2{ font-size:15px; margin:0 0 6px; font-weight:700; text-align:center; }
+  .chart canvas{ width:100%; height:470px; display:block; background:#fff;
+                 border:1px solid #e0e0e0; cursor:crosshair; }
+
+  .legend{ margin:18px 0 0; font-size:13px; line-height:1.9; color:#333;
+           border-top:1px solid #e0e0e0; padding-top:12px; }
+  .legend .zones{ display:flex; flex-wrap:wrap; gap:6px 26px; }
+  .legend .zones span b{ font-weight:700; }
+
+  .info{ margin:16px 0 0; padding:14px 16px; border:1px solid #000; background:#fcfcfc; }
+  .info h3{ margin:0 0 10px; font-size:14px; }
+  .info .fields{ display:flex; flex-wrap:wrap; gap:8px 30px; font-size:14.5px; }
+  .info .fields .f b{ font-size:16px; }
+  .region-tag{ display:inline-block; padding:1px 9px; margin-left:8px; border:1px solid #000;
+               font-size:12.5px; font-weight:700; vertical-align:2px; }
+  .hint{ font-size:12px; color:#666; margin-top:8px; }
+
+  @media (max-width:640px){
+    .chart canvas{ height:400px; }
+    .controls input[type=range]{ width:100%; max-width:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>水蒸气的定压汽化过程：p–v 图 与 T–s 图</h1>
+    <div class="sub">工程热力学 · 纯物质相变区域示意（交互仿真）</div>
+  </header>
+
+  <p class="desc">
+    图中<b>饱和水线（下界线，x=0）</b>，左侧为<b>过冷水（未饱和液体）</b>；
+    <b>干饱和蒸汽线（上界线，x=1）</b>，右侧为<b>过热蒸汽区</b>；
+    两条饱和曲线包围的区域为<b>湿蒸汽两相区</b>；两条曲线在<b>临界点 C</b> 交汇。
+    定压加热过程：过冷水预热 → 到达饱和水状态<b>1′</b>（开始汽化）→ 继续加热为<b>湿蒸汽</b>
+    → 到达干饱和蒸汽<b>1″</b>（汽化结束）→ 继续加热变为<b>过热蒸汽</b>。
+  </p>
+
+  <div class="controls">
+    <label for="pSlider">压力 <i>p</i>：</label>
+    <input type="range" id="pSlider" min="0.05" max="22.064" step="0.001" value="1.0" />
+    <div class="ctrl-readout">当前压力 <b id="pVal">1.00</b> MPa，饱和温度 <b id="tSatVal">179.9</b> ℃，干度 <b id="xVal">0.500</b></div>
+    <div class="ctrl-readout" id="superMsg" style="display:none; color:#a00; font-weight:700;">【当前为超临界压力，不存在定压汽化相变过程】</div>
+  </div>
+
+  <div class="charts">
+    <div class="chart">
+      <h2>p–v 图（比容—压力，对数坐标）</h2>
+      <canvas id="cvPV"></canvas>
+    </div>
+    <div class="chart">
+      <h2>T–s 图（比熵—温度）</h2>
+      <canvas id="cvTS"></canvas>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="zones">
+      <span><b>过冷水区</b>：饱和水线左侧（未饱和液）</span>
+      <span><b>湿蒸汽区</b>：两界限线之间（饱和液＋饱和汽共存）</span>
+      <span><b>过热蒸汽区</b>：干饱和蒸汽线右侧</span>
+      <span><b>临界点 C</b>：两界限线的汇合点</span>
+    </div>
+    <div class="hint">
+      操作：拖动滑块改变压力；鼠标在图上移动可在当前等压线上<b>预览</b>状态点（两图同步），单击<b>锁定</b>并显示参数；
+      单击图中<b>临界点 C</b> 可拾取临界点。
+    </div>
+  </div>
+
+  <div class="info">
+    <h3>状态点参数 <span id="regionTag" class="region-tag">—</span></h3>
+    <div class="fields">
+      <span class="f">压力 p = <b id="oP">—</b> MPa</span>
+      <span class="f">温度 t = <b id="oT">—</b> ℃</span>
+      <span class="f">比容 v = <b id="oV">—</b> m³/kg</span>
+      <span class="f">比熵 s = <b id="oS">—</b> kJ/(kg·K)</span>
+      <span class="f" id="oXwrap">干度 x = <b id="oX">—</b></span>
+    </div>
+    <div class="hint" id="oSource">尚未拾取状态点</div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+ * 1. 水蒸气简化热物性模型
+ *    以「折合温度 θ = T/T_c」为自变量，构造在 [三相点, 临界点] 区间内
+ *    单调、光滑、端值正确的饱和线模型，用于复现教材插图形态。
+ *    数值误差（相对真实蒸汽表）约 ±3%，足够用于教学示意。
+ * ===================================================================== */
+const TC   = 647.096;        // 临界温度 K
+const PC   = 22.064;         // 临界压力 MPa
+const VC   = 0.003106;       // 临界比容 m^3/kg
+const SC   = 4.4298;         // 临界比熵 kJ/(kg·K)
+const TTP  = 273.16;         // 三相点温度 K
+const PTP  = 0.000611657;    // 三相点压力 MPa
+const R    = 461.526;        // 水蒸气气体常数 J/(kg·K)
+const ZC   = 0.2295;         // 临界压缩因子（Rackett 饱和水比容用）
+const VF_COEF = R*TC/(PC*1e6);          // Rackett 系数 = v_c / Z_c
+const THETA_TP = TTP/TC;                // 三相点折合温度
+const H_FG0 = 2257;                     // 100℃ 汽化潜热 kJ/kg
+const THETA_REF = 373.15/TC;            // 100℃ 折合温度
+const CP_STEAM = 2.0;                   // 过热蒸汽平均定压比热 kJ/(kg·K)
+
+/* 折合温度 θ(u)，参数 u∈[0,1]：0→三相点，1→临界点 */
+function theta(u){ return THETA_TP + (1 - THETA_TP)*u; }
+
+/* 饱和压力 p_sat(T)：IAPWS-IF97 区域4（国际水和水蒸气性质协会标准），
+   与真实蒸汽表一致。例如 2.1 MPa → 214.9 ℃、1.0 MPa → 179.9 ℃、临界 22.064 MPa → 373.95 ℃。 */
+const IF97_N = [
+  0.11670521452767e4, -0.72421316703206e6, -0.17073846940092e2,
+  0.12020824702470e5, -0.32325550322333e7,  0.14915108613530e2,
+ -0.48232657361591e4,  0.40511340542057e6, -0.23855557567849,
+  0.65017534844798e3
+];
+function psatIF97(T){                 // T:K → p:MPa
+  const v = T + IF97_N[8]/(T - IF97_N[9]);
+  const A = v*v + IF97_N[0]*v + IF97_N[1];
+  const B = IF97_N[2]*v*v + IF97_N[3]*v + IF97_N[4];
+  const C = IF97_N[5]*v*v + IF97_N[6]*v + IF97_N[7];
+  return Math.pow(2*C/(-B + Math.sqrt(B*B - 4*A*C)), 4);
+}
+function pSat(u){
+  return psatIF97(theta(u)*TC);
+}
+
+/* 饱和水比容 v_f(θ)：Rackett 方程 */
+function vfSat(u){
+  const th = theta(u);
+  return VF_COEF * Math.pow(ZC, 1 + Math.pow(1 - th, 2/7));
+}
+
+/* 干饱和蒸汽比容 v_g(θ)：v_g = Z_g · R·T / p_sat，
+   压缩因子 Z_g 由 1（低压理想气体）平滑过渡到 Z_c（临界点）。 */
+function vgSat(u){
+  const th = theta(u);
+  const p = pSat(u)*1e6;              // Pa
+  const Zg = 1 - (1 - ZC)*Math.pow(th, 8);
+  return Zg * R * (th*TC) / p;
+}
+
+/* 汽化潜热 h_fg(θ)：Watson 关系，θ→1 时 →0（两相区在临界点收拢） */
+function hfgSat(u){
+  const th = theta(u);
+  return H_FG0 * Math.pow((1 - th)/(1 - THETA_REF), 0.38);
+}
+
+/* 饱和水比熵 s_f(u)：拟合真实蒸汽表 s_f(T)，使 T-s 图饱和水线
+   全程单调向右上方、斜率恒正，且临界点处 ds/dT→∞（水平切线、不向内下弯）。 */
+const SF_M = 0.36, SF_A = -0.9223, SF_B = 0.5665, SF_C = -0.2894;
+function sfSat(u){
+  u = Math.min(Math.max(u, 0), 1);
+  const omu = 1 - u;
+  return SC * (1 - Math.pow(omu, SF_M) * (1 + SF_A*u + SF_B*u*u + SF_C*u*u*u));
+}
+
+/* 由参数 u 计算该饱和状态的全部物性 */
+function propsAtU(u){
+  u = Math.min(Math.max(u, 0), 1);
+  const th = theta(u), T = th*TC, p = pSat(u);
+  const vf = vfSat(u), vg = vgSat(u);
+  const hfg = hfgSat(u);
+  const sf = sfSat(u);                // 饱和水比熵（蒸汽表拟合，0 → Sc）
+  const sg = sf + hfg/T;              // 干饱和蒸汽比熵：s_g = s_f + h_fg/T
+  return { u, th, T, p, vf, vg, sf, sg, hfg };
+}
+
+/* 预生成饱和线采样点（用于绘制两界限线） */
+const NU = 400;
+const sat = [];
+for (let i = 0; i <= NU; i++) sat.push(propsAtU(i/NU));
+
+/* 由压力 p 反查饱和状态（p 随 u 单调递增，二分查找） */
+function saturationAtP(p){
+  p = Math.min(Math.max(p, PTP), PC);
+  let lo = 0, hi = NU;
+  while (hi - lo > 1){
+    const mid = (lo + hi) >> 1;
+    if (sat[mid].p < p) lo = mid; else hi = mid;
+  }
+  const dp = (p - sat[lo].p) / (sat[hi].p - sat[lo].p || 1);
+  const u = sat[lo].u + dp * (sat[hi].u - sat[lo].u);
+  return propsAtU(u);
+}
+
+/* 由饱和水比容 v_f 反推参数 u（过冷水：给定比容求温度） */
+function uFromVf(v){
+  // vf = VF_COEF · Zc^(1 + (1-θ)^(2/7))  →  反解 θ
+  const gam = Math.log(v/VF_COEF)/Math.log(ZC) - 1;   // = (1-θ)^(2/7)
+  if (gam < 0) return 0;                               // v ≥ v_c，取临界
+  const th = 1 - Math.pow(gam, 3.5);
+  return (th - THETA_TP)/(1 - THETA_TP);
+}
+
+/* 由饱和水比熵 s 反推参数 u（用于 T–s 图过冷水区拾取温度） */
+function uFromSf(s){
+  s = Math.min(Math.max(s, 0), SC);
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 60; i++){
+    const mid = (lo + hi)/2;
+    if (sfSat(mid) < s) lo = mid; else hi = mid;
+  }
+  return (lo + hi)/2;
+}
+
+/* 是否为超临界压力（p ≥ 临界压力，无定压汽化相变过程） */
+function isSuper(p){ return p >= PC - 1e-9; }
+
+function mk(p, T, v, s, x, region){ return { p, T, v, s, x, region }; }
+
+/* 由 (p, v) 求状态：p–v 图拾取用 */
+function stateFromPV(p, v){
+  const st = saturationAtP(p);
+  if (v < st.vf){
+    // 过冷水（未饱和液）：温度由 v_f(T)=v 反推
+    const vv = Math.min(Math.max(v, vfSat(0)), VC);
+    const pr = propsAtU(uFromVf(vv));
+    return mk(p, pr.T, v, pr.sf, null, 'subcooled');
+  } else if (v <= st.vg){
+    // 湿蒸汽（两相）：T = T_sat，按干度 x 插值（临界处 vg≈vf，避免除零）
+    const dv = st.vg - st.vf;
+    const x = dv > 1e-12 ? (v - st.vf)/dv : 0;
+    return mk(p, st.T, v, st.sf + x*(st.sg - st.sf), x, 'wet');
+  } else {
+    // 过热蒸汽：理想气体近似求 T，等压熵增
+    let T = (p*1e6)*v/R;
+    if (T < st.T) T = st.T;
+    const s = st.sg + CP_STEAM*Math.log(T/st.T);
+    return mk(p, T, v, s, null, 'superheated');
+  }
+}
+
+/* 由 (p, s) 求状态：T–s 图拾取用 */
+function stateFromPS(p, s){
+  const st = saturationAtP(p);
+  if (s < st.sf){
+    const pr = propsAtU(uFromSf(s));
+    return mk(p, pr.T, pr.vf, s, null, 'subcooled');
+  } else if (s <= st.sg){
+    const ds = st.sg - st.sf;
+    const x = ds > 1e-12 ? (s - st.sf)/ds : 0;
+    return mk(p, st.T, st.vf + x*(st.vg - st.vf), s, x, 'wet');
+  } else {
+    const T = st.T*Math.exp((s - st.sg)/CP_STEAM);
+    const v = R*T/(p*1e6);
+    return mk(p, T, v, s, null, 'superheated');
+  }
+}
+
+/* 区域名称 */
+const REGION_NAME = {
+  subcooled:  '过冷水（未饱和液）',
+  wet:        '湿蒸汽（两相区）',
+  superheated:'过热蒸汽',
+  critical:   '临界点'
+};
+
+/* =====================================================================
+ * 2. 绘图基础：Chart 类（坐标变换、网格、坐标轴）
+ * ===================================================================== */
+class Chart{
+  constructor(canvas){
+    this.cv = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.m = { l:62, r:20, t:22, b:46 };   // 边距（CSS 像素）
+  }
+  setXDomain(min, max, log){
+    this.xlog = !!log;
+    this.xmin = min; this.xmax = max;
+    this.xLo = log ? Math.log10(min) : min;
+    this.xHi = log ? Math.log10(max) : max;
+  }
+  setYDomain(min, max, log){
+    this.ylog = !!log;
+    this.ymin = min; this.ymax = max;
+    this.yLo = log ? Math.log10(min) : min;
+    this.yHi = log ? Math.log10(max) : max;
+  }
+  resize(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.cv.clientWidth, h = this.cv.clientHeight;
+    this.cv.width  = Math.max(1, Math.round(w*dpr));
+    this.cv.height = Math.max(1, Math.round(h*dpr));
+    this.dpr = dpr; this.w = w; this.h = h;
+    this.pw = w - this.m.l - this.m.r;
+    this.ph = h - this.m.t - this.m.b;
+  }
+  xToPx(x){ const f = this.xlog ? Math.log10(x) : x;
+            return this.m.l + (f - this.xLo)/(this.xHi - this.xLo)*this.pw; }
+  yToPx(y){ const f = this.ylog ? Math.log10(y) : y;
+            return this.m.t + (this.yHi - f)/(this.yHi - this.yLo)*this.ph; }
+  pxToX(px){ const t = (px - this.m.l)/this.pw;
+             const f = this.xLo + t*(this.xHi - this.xLo);
+             return this.xlog ? Math.pow(10, f) : f; }
+  pyToY(py){ const t = (py - this.m.t)/this.ph;
+             const f = this.yHi - t*(this.yHi - this.yLo);
+             return this.ylog ? Math.pow(10, f) : f; }
+  clear(){
+    const c = this.ctx;
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.clearRect(0, 0, this.w, this.h);
+  }
+}
+
+/* 刻度生成 */
+function logTicks(min, max){
+  const out = [], lo = Math.floor(Math.log10(min)), hi = Math.ceil(Math.log10(max));
+  for (let e = lo; e <= hi; e++){
+    const v = Math.pow(10, e);
+    if (v >= min - 1e-12 && v <= max + 1e-12) out.push(v);
+  }
+  return out;
+}
+function linTicks(min, max, step){
+  const out = [];
+  for (let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step) out.push(v);
+  return out;
+}
+function fmt(v){
+  if (v === 0) return '0';
+  return String(parseFloat(v.toPrecision(4)));
+}
+function pLabel(p){
+  const s = p.toFixed(1);
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
+function fmtP(p){                     // 压力显示：最多 3 位小数（能精确显示 22.064）
+  const s3 = p.toFixed(3), s2 = p.toFixed(2);
+  return s3 === s2 + '0' ? s2 : s3;
+}
+
+/* 坐标轴 + 网格 */
+function drawAxes(chart, xLabel, yLabel, xTicks, yTicks){
+  const c = chart.ctx, m = chart.m;
+  c.save();
+  // 边框
+  c.strokeStyle = '#111'; c.lineWidth = 1;
+  c.strokeRect(m.l, m.t, chart.pw, chart.ph);
+  // 网格线 + 刻度标签
+  c.strokeStyle = '#e6e6e6'; c.lineWidth = 1;
+  c.fillStyle = '#444'; c.font = '11px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  xTicks.forEach(function(v){
+    const x = chart.xToPx(v);
+    c.beginPath(); c.moveTo(x, m.t); c.lineTo(x, m.t + chart.ph); c.stroke();
+    c.fillText(fmt(v), x, m.t + chart.ph + 6);
+  });
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  yTicks.forEach(function(v){
+    const y = chart.yToPx(v);
+    c.beginPath(); c.moveTo(m.l, y); c.lineTo(m.l + chart.pw, y); c.stroke();
+    c.fillText(fmt(v), m.l - 6, y);
+  });
+  // 轴标题
+  c.fillStyle = '#111'; c.font = '13px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.fillText(xLabel, m.l + chart.pw/2, chart.h - 10);
+  c.save();
+  c.translate(13, m.t + chart.ph/2); c.rotate(-Math.PI/2);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(yLabel, 0, 0);
+  c.restore();
+  c.restore();
+}
+
+/* 折线 */
+function plotLine(chart, xs, ys, color, width){
+  const c = chart.ctx;
+  c.save();
+  c.strokeStyle = color; c.lineWidth = width || 1;
+  c.beginPath();
+  for (let i = 0; i < xs.length; i++){
+    const x = chart.xToPx(xs[i]), y = chart.yToPx(ys[i]);
+    if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+  }
+  c.stroke();
+  c.restore();
+}
+
+/* 文本（带白描边，保证压在网格线上仍可读） */
+function label(chart, x, y, text, o){
+  o = o || {};
+  const px = chart.xToPx(x) + (o.x || 0), py = chart.yToPx(y) + (o.y || 0);
+  const c = chart.ctx;
+  c.save();
+  c.font = (o.bold ? '700 ' : '') + (o.size || 12) + 'px "Times New Roman",serif';
+  c.textAlign = o.align || 'left'; c.textBaseline = o.baseline || 'middle';
+  c.lineWidth = 3; c.strokeStyle = '#fff'; c.lineJoin = 'round';
+  c.strokeText(text, px, py);
+  c.fillStyle = o.color || '#000'; c.fillText(text, px, py);
+  c.restore();
+}
+
+/* 圆点（白圈包边） */
+function drawDot(chart, x, y, r){
+  const c = chart.ctx;
+  c.beginPath(); c.arc(chart.xToPx(x), chart.yToPx(y), r, 0, Math.PI*2);
+  c.fillStyle = '#000'; c.fill();
+  c.strokeStyle = '#fff'; c.lineWidth = 1.2; c.stroke();
+}
+
+/* 状态点标记：悬停=虚线空心圈，拾取=实心圆 */
+function drawStateMarkers(chart, st, kind){
+  const c = chart.ctx;
+  function mark(s, filled){
+    const x = kind === 'pv' ? s.v : s.s;
+    const y = kind === 'pv' ? s.p : s.T - 273.15;
+    const px = chart.xToPx(x), py = chart.yToPx(y);
+    c.beginPath(); c.arc(px, py, filled ? 5.5 : 6.5, 0, Math.PI*2);
+    if (filled){
+      c.fillStyle = '#000'; c.fill();
+      c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke();
+    } else {
+      c.strokeStyle = '#333'; c.lineWidth = 1.6; c.setLineDash([3,3]); c.stroke();
+      c.setLineDash([]);
+    }
+  }
+  if (st.hover)  mark(st.hover, false);
+  if (st.picked) mark(st.picked, true);
+}
+
+/* =====================================================================
+ * 3. 两幅图的绘制
+ * ===================================================================== */
+const VBOT = 0.0005, VTOP = 300;   // p–v 图比容范围（对数）
+const PBOT = 0.0006, PTOP = 25;    // p–v 图压力范围（对数）
+const SBOT = 0,  STOP = 10;        // T–s 图比熵范围
+const TBOT = 0,  TTOP = 650;       // T–s 图温度范围（℃）
+const TMAX_K = 900;                // 过热蒸汽段绘制到 900 K
+const ISOBARS = [0.1, 0.5, 1, 2, 5, 10, 15, 20];   // 参考等压线压力 MPa
+
+function renderPV(chart, st){
+  chart.setXDomain(VBOT, VTOP, true);
+  chart.setYDomain(PBOT, PTOP, true);
+  chart.clear();
+  drawAxes(chart, '比容 v / (m³·kg⁻¹)', '压力 p / MPa',
+           logTicks(VBOT, VTOP), logTicks(PBOT, PTOP));
+
+  // 两界限线
+  plotLine(chart, sat.map(function(s){return s.vf;}), sat.map(function(s){return s.p;}), '#000', 2);
+  plotLine(chart, sat.map(function(s){return s.vg;}), sat.map(function(s){return s.p;}), '#000', 2);
+
+  // 等压线（p–v 图中为水平线）
+  ISOBARS.forEach(function(p, idx){
+    const isSel = Math.abs(p - st.pSel) < 0.001;
+    plotLine(chart, [VBOT, VTOP], [p, p], isSel ? '#000' : '#c7c7c7', isSel ? 2.2 : 1);
+    label(chart, VTOP, p, isSel ? p.toFixed(2) : pLabel(p),
+          { x:0, y:-8, align:'right', color:isSel?'#000':'#9a9a9a', size:11 });
+  });
+
+  // 选中等压线的饱和点 1′、1″ 与湿蒸汽段（超临界压力下不存在，隐藏）
+  if (!isSuper(st.pSel)){
+    const sel = saturationAtP(st.pSel);
+    plotLine(chart, [sel.vf, sel.vg], [sel.p, sel.p], '#000', 3);
+    drawDot(chart, sel.vf, sel.p, 4);
+    drawDot(chart, sel.vg, sel.p, 4);
+    label(chart, sel.vf, sel.p, '1′', { x:-10, y:-10, color:'#000' });
+    label(chart, sel.vg, sel.p, '1″', { x:10, y:-10, color:'#000' });
+    label(chart, Math.sqrt(sel.vf*sel.vg), sel.p, '湿蒸汽', { y:-13, align:'center', color:'#000', size:11 });
+  }
+
+  // 临界点 C
+  drawDot(chart, VC, PC, 4);
+  label(chart, VC, PC, 'C', { x:8, y:-12, color:'#000', size:13, bold:true });
+
+  // 分区标注
+  label(chart, 0.00062, 3, '过冷水区', { align:'right', color:'#777', size:12 });
+  label(chart, 0.03, 3, '湿蒸汽区', { align:'center', color:'#777', size:12 });
+  label(chart, 8, 3, '过热蒸汽区', { align:'center', color:'#777', size:12 });
+
+  drawStateMarkers(chart, st, 'pv');
+}
+
+function renderTS(chart, st){
+  chart.setXDomain(SBOT, STOP, false);
+  chart.setYDomain(TBOT, TTOP, false);
+  chart.clear();
+  drawAxes(chart, '比熵 s / (kJ·kg⁻¹·K⁻¹)', '温度 t / ℃',
+           linTicks(SBOT, STOP, 2), linTicks(TBOT, TTOP, 100));
+
+  // 两界限线（℃）
+  plotLine(chart, sat.map(function(s){return s.sf;}), sat.map(function(s){return s.T - 273.15;}), '#000', 2);
+  plotLine(chart, sat.map(function(s){return s.sg;}), sat.map(function(s){return s.T - 273.15;}), '#000', 2);
+
+  // 等压线：湿蒸汽段（水平）+ 过热蒸汽段（上翘曲线）
+  ISOBARS.forEach(function(p, idx){
+    const isSel = Math.abs(p - st.pSel) < 0.001;
+    const col = isSel ? '#000' : '#c7c7c7';
+    const w = isSel ? 2.2 : 1;
+    const ss = saturationAtP(p);
+    const tS = ss.T - 273.15;
+
+    // 湿蒸汽段
+    plotLine(chart, [ss.sf, ss.sg], [tS, tS], col, w);
+    // 过热蒸汽段
+    const Ss = [], Ts = [];
+    for (let T = ss.T; T <= TMAX_K; T += 4){
+      Ts.push(T - 273.15);
+      Ss.push(ss.sg + CP_STEAM*Math.log(T/ss.T));
+    }
+    plotLine(chart, Ss, Ts, col, w);
+    // 过冷水段（贴饱和水线；仅选中线加粗强调）
+    if (isSel){
+      const cut = sat.filter(function(s){ return s.u <= ss.u; });
+      plotLine(chart, cut.map(function(s){return s.sf;}), cut.map(function(s){return s.T - 273.15;}), '#000', 2.2);
+    }
+    // 压力标签（过热段顶端，错开避免重叠）
+    const sTop = ss.sg + CP_STEAM*Math.log(TMAX_K/ss.T);
+    label(chart, sTop, TMAX_K - 273.15, isSel ? p.toFixed(2) : pLabel(p),
+          { x:0, y:8 + (idx % 3)*13, align:'center', color:isSel?'#000':'#9a9a9a', size:11 });
+  });
+
+  // 选中等压线的饱和点 1′、1″ 与湿蒸汽段（超临界压力下不存在，隐藏）
+  if (!isSuper(st.pSel)){
+    const sel = saturationAtP(st.pSel);
+    plotLine(chart, [sel.sf, sel.sg], [sel.T - 273.15, sel.T - 273.15], '#000', 3);
+    drawDot(chart, sel.sf, sel.T - 273.15, 4);
+    drawDot(chart, sel.sg, sel.T - 273.15, 4);
+    label(chart, sel.sf, sel.T - 273.15, '1′', { x:-10, y:-12, color:'#000' });
+    label(chart, sel.sg, sel.T - 273.15, '1″', { x:10, y:-12, color:'#000' });
+    label(chart, (sel.sf + sel.sg)/2, sel.T - 273.15, '湿蒸汽', { y:-13, align:'center', color:'#000', size:11 });
+  }
+
+  // 临界点 C
+  drawDot(chart, SC, TC - 273.15, 4);
+  label(chart, SC, TC - 273.15, 'C', { x:8, y:-12, color:'#000', size:13, bold:true });
+
+  // 分区标注
+  label(chart, 0.6, 180, '过冷水区', { align:'center', color:'#777', size:12 });
+  label(chart, 5.2, 250, '湿蒸汽区', { align:'center', color:'#777', size:12 });
+  label(chart, 8.4, 180, '过热蒸汽区', { align:'center', color:'#777', size:12 });
+
+  drawStateMarkers(chart, st, 'ts');
+}
+
+/* =====================================================================
+ * 4. 状态管理、渲染与交互
+ * ===================================================================== */
+const state = { pSel: 1.0, hover: null, picked: null };
+
+const chartPV = new Chart(document.getElementById('cvPV'));
+const chartTS = new Chart(document.getElementById('cvTS'));
+
+function fmtV(v){ return v.toPrecision(4); }
+
+function updateInfo(){
+  const el = function(id){ return document.getElementById(id); };
+  const superC = isSuper(state.pSel);
+  el('pVal').textContent = fmtP(state.pSel);
+  el('tSatVal').textContent = superC ? '—' : (saturationAtP(state.pSel).T - 273.15).toFixed(1);
+  el('superMsg').style.display = superC ? '' : 'none';
+
+  // 滑块旁的干度 x（对应湿蒸汽黑点；超临界或无湿蒸汽点时显示 —）
+  const pk = state.picked;
+  el('xVal').textContent = (pk && pk.region === 'wet') ? pk.x.toFixed(3) : '—';
+
+  const s = state.hover || state.picked;
+  if (!s){
+    el('regionTag').textContent = '—';
+    el('oP').textContent = '—'; el('oT').textContent = '—';
+    el('oV').textContent = '—'; el('oS').textContent = '—';
+    el('oXwrap').style.display = 'none';
+    el('oSource').textContent = '尚未拾取状态点';
+    return;
+  }
+  el('oP').textContent = s.p.toFixed(3);
+  el('oT').textContent = (s.T - 273.15).toFixed(1);
+  el('oV').textContent = fmtV(s.v);
+  el('oS').textContent = s.s.toFixed(3);
+  el('regionTag').textContent = REGION_NAME[s.region];
+  if (s.region === 'wet'){
+    el('oXwrap').style.display = '';
+    el('oX').textContent = s.x.toFixed(3);
+  } else {
+    el('oXwrap').style.display = 'none';
+  }
+  el('oSource').textContent = state.hover
+    ? '（鼠标预览中，单击锁定该状态点）'
+    : '（已拾取状态点，两图同步标记）';
+}
+
+function render(){
+  chartPV.resize(); chartTS.resize();
+  renderPV(chartPV, state);
+  renderTS(chartTS, state);
+  updateInfo();
+}
+
+/* 判断鼠标是否接近临界点（屏幕距离） */
+function nearCritical(chart, px, py){
+  const cx = chart.xToPx(chart === chartPV ? VC : SC);
+  const cy = chart.yToPx(chart === chartPV ? PC : TC - 273.15);
+  return Math.hypot(px - cx, py - cy) < 14;
+}
+
+function canvasPos(e){
+  const rect = e.target.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function onMove(e, kind){
+  const chart = kind === 'pv' ? chartPV : chartTS;
+  const pos = canvasPos(e);
+  if (nearCritical(chart, pos.x, pos.y)){
+    state.hover = mk(PC, TC, VC, SC, null, 'critical');
+  } else if (kind === 'pv'){
+    state.hover = stateFromPV(state.pSel, chart.pxToX(pos.x));
+  } else {
+    state.hover = stateFromPS(state.pSel, chart.pxToX(pos.x));
+  }
+  render();
+}
+
+function onClick(e, kind){
+  const chart = kind === 'pv' ? chartPV : chartTS;
+  const pos = canvasPos(e);
+  if (nearCritical(chart, pos.x, pos.y)){
+    state.picked = mk(PC, TC, VC, SC, null, 'critical');
+  } else if (kind === 'pv'){
+    state.picked = stateFromPV(state.pSel, chart.pxToX(pos.x));
+  } else {
+    state.picked = stateFromPS(state.pSel, chart.pxToX(pos.x));
+  }
+  state.hover = null;
+  render();
+}
+
+/* 事件绑定 */
+document.getElementById('pSlider').addEventListener('input', function(e){
+  state.pSel = parseFloat(e.target.value);
+  state.hover = null;
+  if (isSuper(state.pSel)){
+    state.picked = null;                       // 超临界：无湿蒸汽状态点
+  } else {
+    // 湿蒸汽段中点（干度 x=0.5）跟随压力，同步更新干度显示
+    const ss = saturationAtP(state.pSel);
+    state.picked = stateFromPV(state.pSel, (ss.vf + ss.vg)/2);
+  }
+  render();
+});
+
+function bindChart(chart, kind){
+  chart.cv.addEventListener('mousemove', function(e){ onMove(e, kind); });
+  chart.cv.addEventListener('mouseleave', function(){ state.hover = null; render(); });
+  chart.cv.addEventListener('click', function(e){ onClick(e, kind); });
+}
+bindChart(chartPV, 'pv');
+bindChart(chartTS, 'ts');
+
+window.addEventListener('resize', render);
+
+/* 初始：默认拾取 1 MPa 等压线上干度 x=0.5 的湿蒸汽点 */
+const sInit = saturationAtP(state.pSel);
+state.picked = stateFromPV(state.pSel, (sInit.vf + sInit.vg)/2);
+
+render();
+
+})();
+</script>
+</body>
+</html>

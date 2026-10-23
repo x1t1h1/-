@@ -120,8 +120,23 @@ function checkReferences(item, label) {
 for (const question of questions) {
   checkReferences(question, '题目')
   expect(isText(question.stem) && isText(question.explanation), `题目 ${question.id} 缺少题干或解析`)
+  const type = question.type ?? 'single'
+  expect(['single', 'multi', 'judge', 'fill'].includes(type), `题目 ${question.id} 的题型无效：${type}`)
+
+  if (type === 'fill') {
+    expect(Array.isArray(question.answers) && question.answers.length >= 1 && question.answers.every(item => isText(item) && item.trim().length > 0), `题目 ${question.id} 的填空答案必须是非空字符串数组`)
+    continue
+  }
+
   expect(Array.isArray(question.options) && question.options.length >= 2 && question.options.every(isText), `题目 ${question.id} 的选项不完整`)
-  expect(Number.isInteger(question.answer) && question.answer >= 0 && question.answer < question.options.length, `题目 ${question.id} 的答案下标越界；首个选项下标为 0`)
+  const answer = question.answer
+  expect(Array.isArray(answer) && answer.length >= 1, `题目 ${question.id} 的答案必须是非空下标数组`)
+  if (Array.isArray(answer)) {
+    expect(answer.every(index => Number.isInteger(index) && index >= 0 && index < question.options.length), `题目 ${question.id} 的答案下标越界；首个选项下标为 0`)
+    expect(new Set(answer).size === answer.length, `题目 ${question.id} 的答案下标存在重复`)
+    if (type === 'multi') expect(answer.length >= 2, `题目 ${question.id} 为多选题，答案应至少包含两个下标`)
+    else expect(answer.length === 1, `题目 ${question.id} 为单选/判断题，答案应为单元素数组`)
+  }
 }
 
 // 本地媒体按 uni-app 约定放在 src/static 下，页面中以 /static/media/... 引用，构建时会被复制到发布目录。
