@@ -7,6 +7,89 @@
     <meta name="description" content="通过知识图谱、课程资源和习题练习，探索工程热力学的知识联系。" />
     <title>热知 · 工程热力学学习平台</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      .ai-tutor-notice { position: fixed; right: 20px; bottom: 20px; z-index: 40; box-sizing: border-box; width: 340px; max-width: calc(100vw - 32px); padding: 20px; border: 1px solid #dce7e2; border-radius: 16px; background: #fff; color: #244b42; box-shadow: 0 8px 32px #164f461a; font-family: inherit; font-size: 14px; }
+      .ai-tutor-notice[hidden] { display: none; }
+      .ai-tutor-notice strong { display: block; padding-right: 24px; font-size: 16px; }
+      .ai-tutor-notice p { margin: 10px 0 16px; color: #64766f; line-height: 1.7; }
+      .ai-tutor-notice__close { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #64766f; font: inherit; font-size: 22px; cursor: pointer; }
+      .ai-tutor-notice__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+      .ai-tutor-notice__retry { padding: 9px 14px; border: 0; border-radius: 9px; background: #164f46; color: #fff; font: inherit; cursor: pointer; }
+      .ai-tutor-notice a { color: #164f46; text-underline-offset: 3px; }
+    </style>
   </head>
-  <body><div id="app"></div><script type="module" src="/src/main.ts"></script></body>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+    <aside id="ai-tutor-notice" class="ai-tutor-notice" aria-label="AI 助教加载提示" hidden>
+      <button id="ai-tutor-dismiss" class="ai-tutor-notice__close" type="button" aria-label="关闭 AI 助教加载提示">×</button>
+      <strong>AI 助教组件暂未加载</strong>
+      <p role="status">请确认已连接校园网。可先在同一浏览器中登录交晓智，再重新加载助教。热知的其他功能可继续使用。</p>
+      <div class="ai-tutor-notice__actions">
+        <button id="ai-tutor-retry" class="ai-tutor-notice__retry" type="button">重新加载助教</button>
+        <a href="https://ai.xjtu.edu.cn/product/llm/chat/dbddjmddh9462bgkn8lg" target="_blank" rel="noopener noreferrer">打开交晓智助教</a>
+      </div>
+    </aside>
+    <script>
+      (() => {
+        const notice = document.getElementById('ai-tutor-notice');
+        const retry = document.getElementById('ai-tutor-retry');
+        let client;
+        let loadAttempt = 0;
+
+        function loadAssistant() {
+          if (client) return;
+          const attempt = ++loadAttempt;
+          notice.hidden = true;
+          retry.disabled = true;
+          document.getElementById('hiagent-web-lite-sdk')?.remove();
+
+          const script = document.createElement('script');
+          script.id = 'hiagent-web-lite-sdk';
+          script.src = 'https://ai.xjtu.edu.cn/resources/product/llm/public/sdk/embedLite.js';
+          script.async = true;
+          let noticeShown = false;
+
+          function showNotice() {
+            if (attempt !== loadAttempt || noticeShown) return;
+            noticeShown = true;
+            retry.disabled = false;
+            notice.hidden = false;
+          }
+
+          const timeout = window.setTimeout(showNotice, 12000);
+          script.onerror = () => {
+            window.clearTimeout(timeout);
+            showNotice();
+          };
+          script.onload = () => {
+            window.clearTimeout(timeout);
+            if (attempt !== loadAttempt || client) return;
+            retry.disabled = false;
+            try {
+              // 参数来自交晓智为前端生成的官方嵌入代码；不使用后端 API 密钥。
+              client = new HiagentWebSDK.WebLiteClient({
+                appKey: 'dbctoltdh9462bgkfsd0',
+                baseUrl: 'https://ai.xjtu.edu.cn',
+                variables: {},
+              });
+              notice.hidden = true;
+            } catch {
+              showNotice();
+            }
+          };
+          document.body.appendChild(script);
+        }
+
+        retry.addEventListener('click', loadAssistant);
+        document.getElementById('ai-tutor-dismiss').addEventListener('click', () => {
+          notice.hidden = true;
+        });
+
+        // 等待热知页面完成首次加载，再异步加载校内 SDK。
+        if (document.readyState === 'complete') loadAssistant();
+        else window.addEventListener('load', loadAssistant, { once: true });
+      })();
+    </script>
+  </body>
 </html>
