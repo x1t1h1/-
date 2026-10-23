@@ -3,6 +3,9 @@ import type { SimulationModel } from './types'
 // 1. 导入原有的模型
 import { carnotCycleModel } from './models/carnotCycle'
 import { idealGasProcessModels } from './models/idealGasProcesses'
+import { waterSteamModel } from './models/waterSteam'
+import { polytropicProcessModel } from './models/polytropicProcess'
+import { psychrometricChartModel } from './models/psychrometricChart'
 
 // 2. 导入你新增的喷管模型
 import { convergentNozzle } from './models/convergentNozzle'
@@ -23,7 +26,12 @@ export const simulationModels: SimulationModel[] = [
   carnotCycleModel,
   ...idealGasProcessModels,
   
-  // 新增模型（喷管与内燃机循环）
+  // 其他同学新增的模型
+  waterSteamModel,
+  polytropicProcessModel,
+  psychrometricChartModel,
+
+  // 你新增的模型（喷管与内燃机循环）
   convergentNozzle,
   lavalNozzle,
   ottoCycle,
@@ -41,7 +49,8 @@ for (const model of simulationModels) {
   byId.set(model.id, model)
 
   // 检查参数默认值是否合法
-  for (const parameter of model.parameters) {
+  // 这里采纳了别人加的 ?? []，防止 parameters 未定义时报错
+  for (const parameter of model.parameters ?? []) {
     if (parameter.type === 'select') continue
     const value = Number(parameter.default)
     if (!Number.isFinite(value)) {

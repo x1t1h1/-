@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>湿空气 h–d 焓湿图交互仿真</title>
+<style>
+  :root{ --ink:#111; --grid:#e6e6e6; --gray:#8a8a8a; --bg:#fff; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Times New Roman","宋体",SimSun,serif; color:var(--ink); background:var(--bg); }
+  .wrap{ max-width:960px; margin:0 auto; padding:24px 20px 48px; }
+
+  header h1{ font-size:26px; margin:0 0 4px; font-weight:700; letter-spacing:.5px; }
+  header .sub{ color:#555; font-size:14px; margin-bottom:6px; }
+
+  .desc{ font-size:13.5px; line-height:1.75; color:#333;
+         border-left:3px solid #000; padding-left:12px; margin:14px 0 18px; }
+
+  .controls{ display:flex; flex-wrap:wrap; align-items:center; gap:12px 22px;
+             margin:6px 0 16px; padding:12px 16px; border:1px solid #d8d8d8; background:#fafafa; }
+  .ctrl{ display:flex; align-items:center; gap:8px; font-size:14px; }
+  .ctrl input[type=range]{ width:180px; }
+  .ctrl b{ font-size:15px; }
+  .procs{ display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+  .procs button{ font-family:inherit; font-size:13px; padding:4px 12px; cursor:pointer;
+                 background:#fff; color:var(--ink); border:1px solid #000; }
+  .procs button:hover{ background:#f0f0f0; }
+
+  .chart{ max-width:880px; margin:0 auto; }
+  .chart h2{ font-size:15px; margin:0 0 6px; font-weight:700; text-align:center; }
+  .chart canvas{ width:100%; height:600px; display:block; background:#fff;
+                 border:1px solid #e0e0e0; cursor:crosshair; }
+
+  .result{ margin:16px auto 0; padding:14px 18px; border:1px solid #000; background:#fcfcfc;
+           max-width:880px; }
+  .result h3{ margin:0 0 10px; font-size:14px; }
+  .result .fields{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:14.5px; }
+  .result .fields b{ font-size:16px; }
+  .hint{ font-size:12px; color:#666; margin-top:8px; }
+
+  .legend{ max-width:880px; margin:16px auto 0; font-size:13px; line-height:1.9; color:#333;
+           border-top:1px solid #e0e0e0; padding-top:12px; }
+  .legend .hint{ font-size:12px; color:#666; margin-top:6px; }
+
+  @media (max-width:640px){
+    .chart canvas{ height:460px; }
+    .ctrl input[type=range]{ width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>湿空气的 h–d 焓湿图</h1>
+    <div class="sub">工程热力学 · 湿空气热力过程（大气压 p<sub>b</sub> = 101.325 kPa）</div>
+  </header>
+
+  <p class="desc">
+    <b>工程热力学·湿空气热力过程（大气压 p<sub>b</sub> = 101.325 kPa）</b><br />
+    横轴为含湿量 <b>d</b>（g/kg 干空气），纵轴为干球温度 <b>t</b>（℃）。图中：
+    <b>等相对湿度 φ 线</b>（φ = 100% 为饱和线，饱和线左侧为未饱和湿空气区；饱和线右侧为过饱和雾区，不属于稳定平衡湿空气）、
+    <b>等焓 h 斜线</b>、<b>等比体积 v 虚线</b>、顶部<b>水蒸气分压力 p<sub>v</sub> 辅助刻度</b>。
+    基本关系：d = 0.622 p<sub>v</sub>/(p<sub>b</sub>−p<sub>v</sub>)，φ = p<sub>v</sub>/p<sub>s</sub>(t)，h = 1.005t + d(2501 + 1.84t)。
+  </p>
+
+  <div class="controls">
+    <div class="ctrl"><label>温度 t：</label>
+      <input type="range" id="tSlider" min="-10" max="55" step="0.1" value="20" />
+      <b id="tVal">20.00</b> ℃</div>
+    <div class="ctrl"><label>含湿量 d：</label>
+      <input type="range" id="dSlider" min="0" max="40" step="0.1" value="10" />
+      <b id="dVal">10.00</b> g/kg</div>
+    <div class="procs" id="procs">
+      <button data-proc="heat">加热（d 不变）</button>
+      <button data-proc="cool">冷却（d 不变）</button>
+      <button data-proc="humid">等温加湿</button>
+      <button data-proc="adia">绝热加湿（h 不变）</button>
+    </div>
+  </div>
+
+  <div class="chart">
+    <h2>h–d 焓湿图</h2>
+    <canvas id="cv"></canvas>
+  </div>
+
+  <div class="result">
+    <h3>状态点参数</h3>
+    <div class="fields">
+      <span>温度 <b>t = <span id="oT">20.00</span> ℃</b></span>
+      <span>含湿量 <b>d = <span id="oD">10.00</span> g/kg</b></span>
+      <span>相对湿度 <b>φ = <span id="oPhi">68.70</span> %</b></span>
+      <span>焓 <b>h = <span id="oH">45.48</span> kJ/kg</b></span>
+      <span>水蒸气分压力 <b>p<sub>v</sub> = <span id="oPv">1.60</span> kPa</b></span>
+      <span>比体积 <b>v = <span id="oV">0.84</span> m³/kg</b></span>
+    </div>
+    <div class="hint" id="satHint" style="display:none; color:#a00; font-weight:700;">【达到饱和，多余水蒸气凝结析出】</div>
+    <div class="hint" id="oSource">点击图中任意位置捕捉状态点</div>
+  </div>
+
+  <div class="legend">
+    <div class="hint">
+      操作：在图上<b>移动鼠标</b>预览状态点，<b>单击</b>捕捉锁定；拖动上方<b>t、d 滑块</b>可分别演示
+      <b>加热/冷却</b>（d 不变、t 变）与<b>加湿/去湿</b>（t 不变、d 变）；单击过程按钮演示对应过程并绘制过程线（虚线箭头）。
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+ * 1. 湿空气热物性模型
+ *    大气压 p_b = 101.325 kPa；d 单位 g/kg 干空气（内部换算 kg/kg）。
+ * ===================================================================== */
+const PB  = 101.325;   // 大气压 kPa
+const RA  = 0.287;     // 干空气气体常数 kJ/(kg·K)
+const CPA = 1.005;     // 干空气定压比热 kJ/(kg·K)
+const R0  = 2501;      // 0℃ 时水的汽化潜热 kJ/kg
+const CPV = 1.84;      // 水蒸气定压比热 kJ/(kg·K)
+
+/* 绘图区域 */
+const D_MIN = 0, D_MAX = 40;      // 含湿量 g/kg
+const T_MIN = -10, T_MAX = 55;    // 温度 ℃
+
+const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
+const dkg = d => d/1000;          // g/kg → kg/kg
+
+/* 水饱和压力（纯水，Alduchov–Eskridge 公式，t:℃ → kPa） */
+function ps(t){ return 0.61094*Math.exp(17.625*t/(243.04 + t)); }
+
+/* 水蒸气分压力（由含湿量反算） */
+function pvFromD(d){ const dk = dkg(d); return PB*dk/(0.622 + dk); }
+
+/* 相对湿度 φ = p_v / p_s(t)，可 >1（过饱和） */
+function phiFromDT(d, t){ return pvFromD(d)/ps(t); }
+
+/* 焓 h（kJ/kg 干空气） */
+function hFromDT(d, t){ return CPA*t + dkg(d)*(R0 + CPV*t); }
+
+/* 比体积 v（m³/kg 干空气） */
+function vFromDT(d, t){ return RA*(t + 273.15)/(PB - pvFromD(d)); }
+
+/* 由 φ、t 求含湿量 d（g/kg） */
+function dFromPhiT(phi, t){ const pv = phi*ps(t); return 622*pv/(PB - pv); }
+
+/* 饱和含湿量 d_s(t)：φ=100% 时该温度下的最大含湿量（g/kg） */
+function dsAtT(t){ return dFromPhiT(1.0, t); }
+
+/* 状态是否达到饱和（d 已被限制到 d_s） */
+function isSat(t, d){ return d >= dsAtT(t) - 1e-6; }
+
+/* 由 h、d 反求温度 t（等焓线） */
+function tFromHd(h, d){ const dk = dkg(d); return (h - R0*dk)/(CPA + CPV*dk); }
+
+/* 由 v、d 反求温度 t（等比体积线） */
+function tFromVd(v, d){ return v*(PB - pvFromD(d))/RA - 273.15; }
+
+/* =====================================================================
+ * 2. 曲线采样
+ * ===================================================================== */
+const N = 240;
+
+/* 等相对湿度线 φ */
+function phiCurve(phi){
+  const xs = [], ys = [];
+  for (let i = 0; i <= N; i++){
+    const t = T_MIN + (T_MAX - T_MIN)*i/N;
+    const d = dFromPhiT(phi, t);
+    if (d > D_MAX) break;                 // d 随 t 单调增，超出后即止
+    xs.push(d); ys.push(t);
+  }
+  return { xs, ys };
+}
+
+/* 等焓线 h */
+function hCurve(h){
+  const xs = [], ys = [];
+  for (let i = 0; i <= N; i++){
+    const d = D_MIN + (D_MAX - D_MIN)*i/N;
+    const t = tFromHd(h, d);
+    if (t < T_MIN || t > T_MAX) continue;
+    xs.push(d); ys.push(t);
+  }
+  return { xs, ys };
+}
+
+/* 等比体积线 v */
+function vCurve(v){
+  const xs = [], ys = [];
+  for (let i = 0; i <= N; i++){
+    const d = D_MIN + (D_MAX - D_MIN)*i/N;
+    const t = tFromVd(v, d);
+    if (t < T_MIN || t > T_MAX) continue;
+    xs.push(d); ys.push(t);
+  }
+  return { xs, ys };
+}
+
+const PHI_LIST = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0];
+const H_LIST   = [0,10,20,30,40,50,60,70,80,90,100,110,120];
+const V_LIST   = [0.75,0.80,0.85,0.90,0.95];
+
+/* 标注锚点 */
+function phiAnchor(phi){ return { d: dFromPhiT(phi, 28), t: 28 }; }
+function hAnchor(h){
+  const t0 = h/CPA;                       // d=0 处的温度
+  if (t0 <= T_MAX) return { d: 0, t: t0 };
+  const d = (h - CPA*T_MAX)/(R0 + CPV*T_MAX)*1000;   // 从顶边进入处的 d (g/kg)
+  return { d, t: T_MAX };
+}
+function vAnchor(v){
+  const t0 = v*PB/RA - 273.15;            // d=0 处的温度
+  if (t0 <= T_MAX) return { d: 0, t: t0 };
+  const pv = PB - RA*(T_MAX + 273.15)/v;
+  return { d: 622*pv/(PB - pv), t: T_MAX };
+}
+
+/* =====================================================================
+ * 3. 绘图基础
+ * ===================================================================== */
+class Chart{
+  constructor(canvas){
+    this.cv = canvas; this.ctx = canvas.getContext('2d');
+    this.m = { l:58, r:22, t:40, b:46 };
+  }
+  setXDomain(min, max){ this.xLo=min; this.xHi=max; }
+  setYDomain(min, max){ this.yLo=min; this.yHi=max; }
+  resize(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.cv.clientWidth, h = this.cv.clientHeight;
+    this.cv.width  = Math.max(1, Math.round(w*dpr));
+    this.cv.height = Math.max(1, Math.round(h*dpr));
+    this.dpr = dpr; this.w = w; this.h = h;
+    this.pw = w - this.m.l - this.m.r;
+    this.ph = h - this.m.t - this.m.b;
+  }
+  xToPx(x){ return this.m.l + (x - this.xLo)/(this.xHi - this.xLo)*this.pw; }
+  yToPx(y){ return this.m.t + (this.yHi - y)/(this.yHi - this.yLo)*this.ph; }
+  pxToX(px){ return this.xLo + (px - this.m.l)/this.pw*(this.xHi - this.xLo); }
+  pyToY(py){ return this.yHi - (py - this.m.t)/this.ph*(this.yHi - this.yLo); }
+  clear(){
+    const c = this.ctx;
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.clearRect(0, 0, this.w, this.h);
+  }
+  clipPlot(){ this.ctx.save(); this.ctx.beginPath();
+              this.ctx.rect(this.m.l, this.m.t, this.pw, this.ph); this.ctx.clip(); }
+  unclip(){ this.ctx.restore(); }
+}
+
+function linTicks(min, max, step){
+  const out = [];
+  for (let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step) out.push(v);
+  return out;
+}
+function fmt(v){ return v === 0 ? '0' : String(parseFloat(v.toPrecision(4))); }
+
+function drawAxes(chart, xLabel, yLabel, xTicks, yTicks){
+  const c = chart.ctx, m = chart.m;
+  c.save();
+  c.strokeStyle = '#111'; c.lineWidth = 1;
+  c.strokeRect(m.l, m.t, chart.pw, chart.ph);
+  c.strokeStyle = '#e6e6e6'; c.lineWidth = 1;
+  c.fillStyle = '#444'; c.font = '11px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  xTicks.forEach(function(v){
+    const x = chart.xToPx(v);
+    c.beginPath(); c.moveTo(x, m.t); c.lineTo(x, m.t + chart.ph); c.stroke();
+    c.fillText(fmt(v), x, m.t + chart.ph + 6);
+  });
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  yTicks.forEach(function(v){
+    const y = chart.yToPx(v);
+    c.beginPath(); c.moveTo(m.l, y); c.lineTo(m.l + chart.pw, y); c.stroke();
+    c.fillText(fmt(v), m.l - 6, y);
+  });
+  c.fillStyle = '#111'; c.font = '13px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.fillText(xLabel, m.l + chart.pw/2, chart.h - 10);
+  c.save();
+  c.translate(13, m.t + chart.ph/2); c.rotate(-Math.PI/2);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(yLabel, 0, 0);
+  c.restore();
+  c.restore();
+}
+
+/* 顶部水蒸气分压力辅助刻度 */
+function drawPvAxis(chart){
+  const c = chart.ctx, m = chart.m;
+  const pvs = [1, 2, 3, 4, 5];
+  c.save();
+  c.strokeStyle = '#111'; c.lineWidth = 1;
+  c.fillStyle = '#333'; c.font = '11px "Times New Roman",serif';
+  c.textAlign = 'center'; c.textBaseline = 'bottom';
+  pvs.forEach(function(pv){
+    const d = 622*pv/(PB - pv);
+    const x = chart.xToPx(d);
+    c.beginPath(); c.moveTo(x, m.t); c.lineTo(x, m.t - 5); c.stroke();
+    c.fillText(String(pv), x, m.t - 6);
+    c.strokeStyle = '#eaeaea';
+    c.setLineDash([2,4]);
+    c.beginPath(); c.moveTo(x, m.t); c.lineTo(x, m.t + chart.ph); c.stroke();
+    c.setLineDash([]);
+    c.strokeStyle = '#111';
+  });
+  c.fillStyle = '#111'; c.font = '12px "Times New Roman",serif';
+  c.textAlign = 'left'; c.textBaseline = 'bottom';
+  c.fillText('水蒸气分压力 p_v / kPa', m.l, m.t - 11);
+  c.restore();
+}
+
+function plotLine(chart, xs, ys, color, width, dash){
+  const c = chart.ctx;
+  c.save();
+  c.strokeStyle = color; c.lineWidth = width || 1;
+  c.setLineDash(dash || []);
+  c.beginPath();
+  let started = false;
+  for (let i = 0; i < xs.length; i++){
+    const x = chart.xToPx(xs[i]), y = chart.yToPx(ys[i]);
+    if (!started){ c.moveTo(x, y); started = true; } else c.lineTo(x, y);
+  }
+  c.stroke();
+  c.restore();
+}
+
+function label(chart, x, y, text, o){
+  o = o || {};
+  const px = chart.xToPx(x) + (o.x || 0), py = chart.yToPx(y) + (o.y || 0);
+  const c = chart.ctx;
+  c.save();
+  c.font = (o.bold ? '700 ' : '') + (o.size || 12) + 'px "Times New Roman",serif';
+  c.textAlign = o.align || 'left'; c.textBaseline = o.baseline || 'middle';
+  c.lineWidth = 3; c.strokeStyle = '#fff'; c.lineJoin = 'round';
+  c.strokeText(text, px, py);
+  c.fillStyle = o.color || '#000'; c.fillText(text, px, py);
+  c.restore();
+}
+
+/* =====================================================================
+ * 4. 绘制
+ * ===================================================================== */
+const state = { t: 20, d: 10, hover: null, path: null };
+const chart = new Chart(document.getElementById('cv'));
+
+function render(){
+  chart.resize();
+  chart.setXDomain(D_MIN, D_MAX); chart.setYDomain(T_MIN, T_MAX);
+  chart.clear();
+  drawAxes(chart, '含湿量 d / (g·kg⁻¹ 干空气)', '干球温度 t / ℃',
+           linTicks(D_MIN, D_MAX, 5), linTicks(T_MIN, T_MAX, 10));
+  drawPvAxis(chart);
+
+  chart.clipPlot();
+  // 等焓线（浅灰实线）
+  H_LIST.forEach(function(h){
+    const c = hCurve(h);
+    plotLine(chart, c.xs, c.ys, '#c2c2c2', 1);
+  });
+  // 等比体积线（浅灰虚线）
+  V_LIST.forEach(function(v){
+    const c = vCurve(v);
+    plotLine(chart, c.xs, c.ys, '#c2c2c2', 1, [4,4]);
+  });
+  // 等相对湿度线（φ=100% 黑粗，其余灰）
+  PHI_LIST.forEach(function(phi){
+    const c = phiCurve(phi);
+    plotLine(chart, c.xs, c.ys, Math.abs(phi-1) < 1e-9 ? '#000' : '#8a8a8a',
+             Math.abs(phi-1) < 1e-9 ? 2 : 1);
+  });
+  // 过程线（虚线箭头）
+  drawPath();
+  chart.unclip();
+
+  // 标注：φ 线
+  PHI_LIST.forEach(function(phi){
+    const a = phiAnchor(phi);
+    label(chart, a.d, a.t, Math.round(phi*100) + '%',
+          { x: 6, y: -6, color:'#666', size:10.5 });
+  });
+  // 标注：h 线
+  H_LIST.forEach(function(h){
+    const a = hAnchor(h);
+    label(chart, a.d, a.t, 'h=' + h, { x: 6, y: -5, color:'#999', size:10.5 });
+  });
+  // 标注：v 线
+  V_LIST.forEach(function(v){
+    const a = vAnchor(v);
+    label(chart, a.d, a.t, 'v=' + v.toFixed(2), { x: 6, y: 5, color:'#999', size:10.5 });
+  });
+
+  // 区域标注
+  label(chart, 4, 40, '未饱和区', { align:'center', color:'#777', size:13 });
+  label(chart, 30, 18, '过饱和区（雾区）', { align:'center', color:'#777', size:11 });
+
+  // 状态点
+  drawStatePoint();
+  updateResult();
+}
+
+/* 过程线（虚线 + 箭头） */
+function drawPath(){
+  if (!state.path) return;
+  const p = state.path, c = chart.ctx;
+  c.save();
+  c.strokeStyle = '#000'; c.lineWidth = 1.5; c.setLineDash([5,4]);
+  c.beginPath();
+  c.moveTo(chart.xToPx(p.from.d), chart.yToPx(p.from.t));
+  c.lineTo(chart.xToPx(p.to.d), chart.yToPx(p.to.t));
+  c.stroke();
+  c.setLineDash([]);
+  const ang = Math.atan2(chart.yToPx(p.to.t) - chart.yToPx(p.from.t),
+                         chart.xToPx(p.to.d) - chart.xToPx(p.from.d));
+  c.translate(chart.xToPx(p.to.d), chart.yToPx(p.to.t)); c.rotate(ang);
+  c.beginPath(); c.moveTo(0,0); c.lineTo(-11,-5); c.lineTo(-11,5); c.closePath();
+  c.fillStyle = '#000'; c.fill();
+  c.restore();
+  label(chart, (p.from.d + p.to.d)/2, (p.from.t + p.to.t)/2, p.name,
+        { align:'center', y:-11, bold:true, size:12 });
+}
+
+/* 状态点：悬停=空心，捕捉=实心 */
+function drawStatePoint(){
+  const s = state.hover || state;
+  const px = chart.xToPx(s.d), py = chart.yToPx(s.t);
+  const c = chart.ctx;
+  // 十字参考线
+  c.save();
+  c.strokeStyle = '#d0d0d0'; c.lineWidth = 1; c.setLineDash([3,3]);
+  c.beginPath(); c.moveTo(px, chart.m.t); c.lineTo(px, chart.m.t + chart.ph); c.stroke();
+  c.beginPath(); c.moveTo(chart.m.l, py); c.lineTo(chart.m.l + chart.pw, py); c.stroke();
+  c.setLineDash([]);
+  c.beginPath(); c.arc(px, py, state.hover ? 6 : 5, 0, Math.PI*2);
+  if (state.hover){
+    c.strokeStyle = '#333'; c.lineWidth = 1.5; c.stroke();
+  } else {
+    c.fillStyle = '#000'; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
+  }
+  c.restore();
+}
+
+/* =====================================================================
+ * 5. 结果输出与交互
+ * ===================================================================== */
+function updateResult(){
+  const s = state.hover || state;
+  const sat = isSat(s.t, s.d);
+  const phi = sat ? 1.0 : phiFromDT(s.d, s.t);
+  const h = hFromDT(s.d, s.t), pv = pvFromD(s.d), v = vFromDT(s.d, s.t);
+
+  document.getElementById('tVal').textContent = state.t.toFixed(2);
+  document.getElementById('dVal').textContent = state.d.toFixed(2);
+  document.getElementById('tSlider').value = String(state.t);
+  document.getElementById('dSlider').value = String(state.d);
+
+  document.getElementById('oT').textContent = s.t.toFixed(2);
+  document.getElementById('oD').textContent = s.d.toFixed(2);
+  document.getElementById('oPhi').textContent = (phi*100).toFixed(2);
+  document.getElementById('oH').textContent = h.toFixed(2);
+  document.getElementById('oPv').textContent = pv.toFixed(2);
+  document.getElementById('oV').textContent = v.toFixed(2);
+
+  // 达到饱和线：提示多余水蒸气凝结析出
+  document.getElementById('satHint').style.display = sat ? '' : 'none';
+
+  document.getElementById('oSource').textContent = state.hover
+    ? '（鼠标预览中，单击捕捉该状态点）'
+    : '（已捕捉状态点）';
+}
+
+/* 捕捉状态点：平衡态只允许位于饱和线左侧（含线上），d 不得大于 d_s(t) */
+function setState(t, d, keepPath){
+  state.t = clamp(t, T_MIN, T_MAX);
+  state.d = clamp(d, D_MIN, dsAtT(state.t));
+  if (!keepPath) state.path = null;
+}
+
+/* 过程按钮：记录起点 → 计算终点 → 绘制过程线 */
+function runProcess(proc){
+  const t0 = state.t, d0 = state.d, h0 = hFromDT(d0, t0);
+  let t1 = t0, d1 = d0, name;
+  if (proc === 'heat'){            // 加热：d 不变，t 升
+    t1 = clamp(t0 + 12, T_MIN, T_MAX); name = '加热';
+  } else if (proc === 'cool'){     // 冷却：d 不变，t 降
+    t1 = clamp(t0 - 12, T_MIN, T_MAX); name = '冷却';
+  } else if (proc === 'humid'){    // 等温加湿：t 不变，d 增
+    d1 = clamp(d0 + 12, D_MIN, D_MAX); name = '等温加湿';
+  } else if (proc === 'adia'){     // 绝热加湿：h 不变，d 增、t 降，至饱和为止
+    d1 = clamp(d0 + 12, D_MIN, D_MAX); name = '绝热加湿';
+    t1 = clamp(tFromHd(h0, d1), T_MIN, T_MAX);
+    if (d1 > dsAtT(t1)){           // 越过饱和线 → 收敛到等焓线与 φ=100% 交点（湿球温度）
+      let lo = d0, hi = d1;
+      for (let i = 0; i < 60; i++){
+        const mid = (lo + hi)/2, tm = tFromHd(h0, mid);
+        if (mid > dsAtT(tm)) hi = mid; else lo = mid;
+      }
+      d1 = (lo + hi)/2;
+      t1 = clamp(tFromHd(h0, d1), T_MIN, T_MAX);
+    }
+  }
+  // 统一物理边界约束：终态不得越过饱和线（越过则凝结析出）
+  t1 = clamp(t1, T_MIN, T_MAX);
+  d1 = clamp(d1, D_MIN, dsAtT(t1));
+  state.path = { from:{ d:d0, t:t0 }, to:{ d:d1, t:t1 }, name };
+  state.t = t1; state.d = d1;
+  state.hover = null;
+  render();
+}
+
+/* 事件 */
+function canvasPos(e){ const r = e.target.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+chart.cv.addEventListener('mousemove', function(e){
+  const pos = canvasPos(e);
+  const t = clamp(chart.pyToY(pos.y), T_MIN, T_MAX);
+  const d = clamp(chart.pxToX(pos.x), D_MIN, dsAtT(t));
+  state.hover = { d, t };
+  render();
+});
+chart.cv.addEventListener('mouseleave', function(){ state.hover = null; render(); });
+chart.cv.addEventListener('click', function(e){
+  const pos = canvasPos(e);
+  setState(chart.pyToY(pos.y), chart.pxToX(pos.x), false);
+  state.hover = null;
+  render();
+});
+
+document.getElementById('tSlider').addEventListener('input', function(e){
+  setState(parseFloat(e.target.value), state.d, false);
+  state.hover = null;
+  render();
+});
+document.getElementById('dSlider').addEventListener('input', function(e){
+  setState(state.t, parseFloat(e.target.value), false);
+  state.hover = null;
+  render();
+});
+document.getElementById('procs').addEventListener('click', function(e){
+  const btn = e.target.closest('button'); if (!btn) return;
+  runProcess(btn.getAttribute('data-proc'));
+});
+
+window.addEventListener('resize', render);
+render();
+
+})();
+</script>
+</body>
+</html>

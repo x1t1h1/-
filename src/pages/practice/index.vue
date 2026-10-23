@@ -14,12 +14,13 @@ const chapterFilter = ref('')
 const nodeFilter = ref('')
 const search = ref('')
 const currentIndex = ref(0)
-const picked = reactive<Record<string, number>>({})
+const picked = reactive<Record<string, number[]>>({})
+const fillInputs = reactive<Record<string, string[]>>({})
 const revealed = reactive<Record<string, boolean>>({})
 const results = reactive<Record<string, boolean>>({})
 const snapshot = ref<string[] | null>(null)
 const letters = ['A', 'B', 'C', 'D', 'E', 'F']
-const blank: Question = { id: '', nodeIds: [], chapterId: '', stem: '', options: [], answer: -1, explanation: '', difficulty: '基础' }
+const blank: Question = { id: '', nodeIds: [], chapterId: '', stem: '', options: [], answer: [], explanation: '', difficulty: '基础' }
 
 const attemptedIds = computed(() => new Set(progress.attempts.map(item => item.questionId)))
 const pool = computed(() => questions.filter(item => {
@@ -32,6 +33,24 @@ const pool = computed(() => questions.filter(item => {
 }))
 const current = computed<Question>(() => pool.value[currentIndex.value] || blank)
 const hasCurrent = computed(() => Boolean(current.value.id))
+const questionType = computed<'single' | 'multi' | 'judge' | 'fill'>(() => current.value.type ?? 'single')
+const answerIndexes = computed(() => current.value.answer ?? [])
+const pickedIndexes = computed(() => picked[current.value.id] ?? [])
+const hasPick = computed(() => pickedIndexes.value.length > 0)
+const answerLabel = computed(() => answerIndexes.value.map(i => letters[i]).join('、') || '—')
+const answerText = computed(() => answerIndexes.value.map(i => current.value.options?.[i]).join('、') || '—')
+const pickedLabel = computed(() => pickedIndexes.value.map(i => letters[i]).join('、') || '—')
+const pickedText = computed(() => pickedIndexes.value.map(i => current.value.options?.[i]).join('、') || '—')
+const fillAnswerText = computed(() => (current.value.answers ?? []).join('；'))
+const fillPickedText = computed(() => (fillInputs[current.value.id] ?? []).map(value => String(value ?? '').trim()).join('；') || '—')
+const hasFillInput = computed(() => (fillInputs[current.value.id] ?? []).some(value => String(value ?? '').trim() !== ''))
+const fillReady = computed(() => {
+  const answers = current.value.answers ?? []
+  if (!answers.length) return false
+  const inputs = fillInputs[current.value.id] ?? []
+  return answers.every((_, index) => String(inputs[index] ?? '').trim() !== '')
+})
+function isPicked(item: Question, index: number) { return (picked[item.id] ?? []).includes(index) }
 const currentChapter = computed(() => chapters.find(item => item.id === current.value.chapterId))
 const relatedNodes = computed(() => current.value.nodeIds
   .map(id => nodes.find(node => node.id === id))
@@ -73,13 +92,39 @@ onLoad(options => {
 
 function choose(index: number) {
   if (!hasCurrent.value || revealed[current.value.id]) return
-  picked[current.value.id] = index
+  const cur = picked[current.value.id] ?? []
+  if ((current.value.type ?? 'single') === 'multi') {
+    const next = cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index].sort((a, b) => a - b)
+    picked[current.value.id] = next
+  } else {
+    picked[current.value.id] = [index]
+  }
+}
+function onFillInput(index: number, event: Event) {
+  const item = current.value
+  if (!item.id || revealed[item.id]) return
+  const detail = (event as unknown as { detail?: { value?: string } }).detail
+  const target = event.target as HTMLInputElement | null
+  const value = detail?.value ?? target?.value ?? ''
+  const currentInputs = fillInputs[item.id] ?? Array((item.answers ?? []).length).fill('')
+  const next = currentInputs.slice()
+  next[index] = value
+  fillInputs[item.id] = next
 }
 function submit() {
   const item = current.value
   if (!item.id) return
-  const choice = picked[item.id]
-  if (choice === undefined) { toast('请先选择一个选项'); return }
+  if ((item.type ?? 'single') === 'fill') {
+    const inputs = fillInputs[item.id] ?? []
+    if (!inputs.length || inputs.some(value => !String(value ?? '').trim())) { toast('请填写所有空'); return }
+    const correct = submitAnswer(item.id, inputs)
+    results[item.id] = correct
+    revealed[item.id] = true
+    toast(correct ? '回答正确，继续保持' : '已记入错题，稍后可重做')
+    return
+  }
+  const choice = picked[item.id] ?? []
+  if (!choice.length) { toast((item.type ?? 'single') === 'multi' ? '请至少选择一个选项' : '请先选择一个选项'); return }
   const correct = submitAnswer(item.id, choice)
   results[item.id] = correct
   revealed[item.id] = true
@@ -89,6 +134,7 @@ function redo() {
   const item = current.value
   if (!item.id) return
   delete picked[item.id]
+  delete fillInputs[item.id]
   delete revealed[item.id]
   delete results[item.id]
 }
@@ -155,20 +201,37 @@ function clearFilters() { scope.value = 'all'; chapterFilter.value = ''; nodeFil
             <span v-if="attemptedIds.has(current.id)" class="tag blue">已作答过</span>
           </div>
           <h2 class="question-stem">{{ current.stem }}</h2>
-          <div class="options">
+          <div v-if="questionType === 'fill'" class="fill-inputs">
+            <label v-for="(blank, index) in current.answers" :key="index" class="fill-field">
+              <span class="fill-label">空 {{ index + 1 }}</span>
+              <input
+                type="text"
+                :value="fillInputs[current.id]?.[index] ?? ''"
+                :disabled="revealed[current.id]"
+                :aria-label="`第 ${index + 1} 空`"
+                placeholder="请输入答案"
+                @input="onFillInput(index, $event)"
+              />
+            </label>
+          </div>
+
+          <div v-else class="options" :class="{ 'options-judge': questionType === 'judge' }">
             <button
               v-for="(option, index) in current.options"
               :key="index"
               class="option"
               :class="{
-                selected: picked[current.id] === index && !revealed[current.id],
-                correct: revealed[current.id] && index === current.answer,
-                wrong: revealed[current.id] && picked[current.id] === index && index !== current.answer,
+                'option-multi': questionType === 'multi',
+                selected: isPicked(current, index) && !revealed[current.id],
+                correct: revealed[current.id] && (current.answer ?? []).includes(index),
+                wrong: revealed[current.id] && isPicked(current, index) && !(current.answer ?? []).includes(index),
               }"
               :disabled="revealed[current.id]"
               @click="choose(index)"
             >
-              <span class="option-letter">{{ letters[index] }}</span>
+              <span v-if="questionType === 'multi'" class="option-checkbox" :class="{ checked: isPicked(current, index) }"><Icon v-if="isPicked(current, index)" name="check" :size="11" /></span>
+              <span v-else-if="questionType === 'judge'" class="option-judge" :class="{ 'is-true': index === 0, 'is-false': index === 1 }"><Icon :name="index === 0 ? 'check' : 'close'" :size="12" /></span>
+              <span v-else class="option-letter">{{ letters[index] }}</span>
               <span>{{ option }}</span>
             </button>
           </div>
@@ -178,8 +241,10 @@ function clearFilters() { scope.value = 'all'; chapterFilter.value = ''; nodeFil
               <Icon :name="results[current.id] ? 'check' : 'close'" :size="15" />
               <span>{{ results[current.id] ? '回答正确，这个知识点已经通过检验。' : '回答错误，看完解析再重做一次。' }}</span>
             </div>
-            <p class="result-answer">正确答案：<b>{{ letters[current.answer] }}</b> · {{ current.options[current.answer] }}</p>
-            <p class="result-pick">你的选择：{{ letters[picked[current.id]] }} · {{ current.options[picked[current.id]] }}</p>
+            <p v-if="questionType === 'fill'" class="result-answer">正确答案：<b>{{ fillAnswerText }}</b></p>
+            <p v-else class="result-answer">正确答案：<b>{{ answerLabel }}</b> · {{ answerText }}</p>
+            <p v-if="questionType === 'fill'" class="result-pick">你的作答：{{ fillPickedText }}</p>
+            <p v-else class="result-pick">你的选择：{{ pickedLabel }} · {{ pickedText }}</p>
             <div class="explanation"><span class="explanation-label">解析</span><p>{{ current.explanation }}</p></div>
           </div>
 
@@ -190,8 +255,8 @@ function clearFilters() { scope.value = 'all'; chapterFilter.value = ''; nodeFil
 
           <div class="question-actions">
             <template v-if="!revealed[current.id]">
-              <button class="button primary" @click="submit"><Icon name="check" :size="16" />提交答案</button>
-              <button v-if="picked[current.id] !== undefined" class="button ghost" @click="redo">清除选择</button>
+              <button class="button primary" :disabled="questionType === 'fill' && !fillReady" @click="submit"><Icon name="check" :size="16" />提交答案</button>
+              <button v-if="hasPick || hasFillInput" class="button ghost" @click="redo">清除选择</button>
             </template>
             <template v-else>
               <button class="button secondary" @click="redo"><Icon name="reset" :size="16" />重新作答</button>
@@ -281,6 +346,25 @@ function clearFilters() { scope.value = 'all'; chapterFilter.value = ''; nodeFil
 .option.correct .option-letter{background:#4c8f62;color:#fff}
 .option.wrong{border-color:#e2c3b8;background:#fdf4f0}
 .option.wrong .option-letter{background:#b96e58;color:#fff}
+.option-multi{align-items:center}
+.option-checkbox{width:20px;height:20px;border-radius:5px;border:1.5px solid #c9d6c9;background:#f6faf5;color:#fff;display:grid;place-items:center;flex-shrink:0;transition:border-color .18s,background .18s}
+.option-checkbox.checked{background:#3c7d5c;border-color:#3c7d5c}
+.option.correct .option-checkbox.checked{background:#4c8f62;border-color:#4c8f62}
+.option.wrong .option-checkbox.checked{background:#b96e58;border-color:#b96e58}
+.options-judge{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.options-judge .option{justify-content:center;gap:9px;align-items:center}
+.option-judge{width:22px;height:22px;border-radius:50%;background:#f1f5f0;color:#8b9a8c;display:grid;place-items:center;flex-shrink:0}
+.option-judge.is-true{color:#3f8a52}
+.option-judge.is-false{color:#b96e58}
+.option.selected .option-judge{background:#3c7d5c;color:#fff}
+.option.correct .option-judge{background:#4c8f62;color:#fff}
+.option.wrong .option-judge{background:#b96e58;color:#fff}
+.fill-inputs{display:flex;flex-direction:column;gap:11px}
+.fill-field{display:flex;align-items:center;gap:12px}
+.fill-label{width:34px;flex-shrink:0;font-size:11px;color:#8b9a8c;font-weight:600}
+.fill-field input{flex:1;min-width:0;min-height:40px;border:1px solid #e5ebe8;border-radius:8px;background:#fff;color:#4c5f56;font-size:12.5px;padding:9px 12px;transition:border-color .18s,background .18s}
+.fill-field input:focus{border-color:#8fbb9b;outline:none;background:#f7fbf6}
+.fill-field input:disabled{background:#f2f6f1;color:#7c8b7e;cursor:default}
 .result-box{margin-top:20px;padding:17px 18px;border:1px solid #dbe9db;border-radius:9px;background:#f4faf3}
 .result-box.is-wrong{border-color:#eeddd5;background:#fdf6f2}
 .result-head{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:600;color:#3f7a55}

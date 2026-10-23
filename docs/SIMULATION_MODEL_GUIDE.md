@@ -186,7 +186,7 @@ export const simulationModels: SimulationModel[] = [
 本项目是纯前端 H5 演示，**没有后端**。因此：
 
 - 模型必须能直接在浏览器运行，推荐用 TypeScript/JavaScript 重写计算部分。
-- Python/MATLAB 模型不能直接接入；需要先导出为 JS/WASM，或提供可独立运行的 HTML（iframe 适配器为后续扩展，目前尚未实现）。
+- Python/MATLAB 模型不能直接接入；需要先导出为 JS/WASM，或提供可独立运行的 HTML（通过 `htmlUrl` 以 iframe 整体嵌入，详见第 10 节「独立 HTML 实验接入」）。
 - 不要在模型里写 API Key、服务器地址或任何密钥。
 - 单个模型的参数和采样点不宜过多；当前图表建议 40–120 个点。
 
@@ -199,3 +199,39 @@ export const simulationModels: SimulationModel[] = [
 | 图表空白 | `points` 是否为空或包含 `NaN`？坐标轴名称是否设置？ |
 | 页面报中文错误 | 这是 `compute` 抛出的输入校验信息，按提示修正参数 |
 | 类型检查失败 | 检查是否从 `../types` 正确导入 `SimulationModel` |
+
+## 10. 独立 HTML 实验接入
+
+对于自带滑块、预设按钮与结果面板的自包含交互页面（内联 CSS + Canvas，零外部依赖），无需拆成 `compute` 数据模型，可直接以 iframe 整体嵌入。
+
+### 接入字段
+
+在模型对象上设置 `htmlUrl`，指向打包后可访问的静态资源路径，例如：
+
+```ts
+export const waterSteamModel: SimulationModel = {
+  id: 'water-steam-pv-ts',
+  name: '水蒸气的定压汽化过程',
+  description: '在 p–v 与 T–s 相图上交互观察水在定压下的汽化过程。',
+  category: '热力过程',
+  accent: '#35a7bd',
+  chapterIds: ['ch3'],
+  htmlUrl: '/static/simulations/water-steam-pv-ts.html',
+}
+```
+
+- 设置 `htmlUrl` 后可以省略 `parameters` 与 `compute`（两者均为可选字段）。
+- 仿真首页卡片会跳过 `compute` 预览，改为在预览区显示实验标题与一句话说明。
+- 详情页会隐藏参数面板、指标卡、ECharts 图表与状态表，改为主区域渲染整页 `<iframe>`；侧栏「实验说明」仍保留。
+
+### 文件位置与访问方式
+
+- 独立 HTML 文件放在 `src/static/simulations/` 下，文件名使用 kebab-case，例如 `water-steam-pv-ts.html`。
+- `htmlUrl` 以 `/static/simulations/` 开头；构建后静态资源会复制到发布目录，运行时按同一路径访问。
+- 页面必须自包含：不要引用外部 `src`/`href`、CDN 或远程图片；脚本与样式直接内联。
+
+### 注意事项
+
+- 嵌入的 iframe 宽度 100%、高度约 78vh（手机端不低于 560px），带边框圆角与浅背景。
+- 请确认 HTML 页面在窄屏下不产生横向溢出，交互（滑块、预设按钮、图表随参数变化）在 iframe 内正常。
+- 现有计算模型（卡诺循环、理想气体过程等）不受影响，继续使用 `parameters` + `compute` 方式。
