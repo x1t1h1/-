@@ -1,7 +1,7 @@
 import { reactive, computed } from 'vue'
 import { nodes, resources, questions } from './data/course'
 
-export interface Attempt { questionId: string; selected: number; correct: boolean; at: string }
+export interface Attempt { questionId: string; selected: number[] | string[]; correct: boolean; at: string }
 interface Progress { completed: string[]; bookmarks: string[]; attempts: Attempt[]; wrong: string[]; lastResource: string; lastNode: string; visits: string[] }
 const key = 'thermolearn.progress.v1'
 const empty = (): Progress => ({ completed: [], bookmarks: [], attempts: [], wrong: [], lastResource: '', lastNode: 'first-law', visits: [] })
@@ -31,10 +31,29 @@ export function toggleBookmark(id: string) {
   if (index >= 0) progress.bookmarks.splice(index, 1); else progress.bookmarks.push(id)
   persist(); toast(index >= 0 ? '已取消收藏' : '已收藏，可在个人中心查看')
 }
-export function submitAnswer(questionId: string, selected: number) {
+function normalizeFill(value: string): string {
+  return String(value)
+    .trim()
+    .replace(/　/g, ' ')
+    .replace(/[！-～]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .toLowerCase()
+}
+export function submitAnswer(questionId: string, selected: number[] | string[]) {
   const q = questions.find(item => item.id === questionId)
   if (!q) return false
-  const correct = q.answer === selected
+  const type = q.type ?? 'single'
+  let correct = false
+  if (type === 'fill') {
+    const inputs = (selected as string[]).map(String)
+    const expected = q.answers ?? []
+    correct = expected.length === inputs.length && expected.every((answer, index) => normalizeFill(answer) === normalizeFill(inputs[index]))
+  } else {
+    const answer = q.answer ?? []
+    const picked = selected as number[]
+    correct = type === 'multi'
+      ? answer.length === picked.length && answer.every(index => picked.includes(index))
+      : picked.length === 1 && picked[0] === answer[0]
+  }
   progress.attempts.push({ questionId, selected, correct, at: new Date().toISOString() })
   if (!correct && !progress.wrong.includes(questionId)) progress.wrong.push(questionId)
   if (correct) progress.wrong = progress.wrong.filter(id => id !== questionId)

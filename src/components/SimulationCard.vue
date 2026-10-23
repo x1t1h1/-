@@ -9,9 +9,10 @@ const emit = defineEmits<{ open: [id: string] }>()
 const accent = computed(() => props.model.accent || '#267760')
 
 const preview = computed(() => {
+  if (!props.model.compute) return null
   try {
     const values: Record<string, SimulationParamValue> = {}
-    for (const parameter of props.model.parameters) values[parameter.key] = parameter.default
+    for (const parameter of props.model.parameters ?? []) values[parameter.key] = parameter.default
     const chart = props.model.compute(values).charts[0]
     const series = chart?.series[0]
     if (!series || series.points.length < 2) return null
@@ -67,6 +68,10 @@ const preview = computed(() => {
         />
       </svg>
     </span>
+    <span v-else-if="model.htmlUrl" class="card-preview is-html" aria-hidden="true">
+      <strong class="html-preview-title">{{ model.name }}</strong>
+      <span class="html-preview-desc">{{ model.description }}</span>
+    </span>
     <span v-else class="card-preview is-empty" aria-hidden="true"></span>
 
     <span class="card-footer">
@@ -87,6 +92,9 @@ const preview = computed(() => {
 .card-preview{display:block;height:80px;margin:4px -4px 0;background:linear-gradient(180deg,#f7faf7,#fff);border-radius:8px;overflow:hidden}
 .card-preview svg{display:block;width:100%;height:100%}
 .card-preview.is-empty{background:#f7faf7}
+.card-preview.is-html{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:0 10px;text-align:left}
+.html-preview-title{font-size:13px;font-weight:600;color:#2f4a3d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.html-preview-desc{font-size:10px;line-height:1.6;color:#8b9a8e;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .card-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #eff3ef;padding-top:11px;font-size:10px;color:#9aa79c}
 .card-enter{display:flex;align-items:center;gap:4px;color:#4f8063;font-weight:500}
 </style>

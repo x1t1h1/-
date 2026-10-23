@@ -34,7 +34,12 @@ function nodeTitle(id?: string) {
   if (!id) return '综合练习'
   return nodes.find(item => item.id === id)?.title || id
 }
-function letterOf(index: number) { return letters[index] || '—' }
+function isFillQuestion(id: string) { return (questions.find(item => item.id === id)?.type ?? 'single') === 'fill' }
+function answerLabelOf(item: { questionId: string; selected: number[] | string[] }) {
+  const list = Array.isArray(item.selected) ? item.selected : [item.selected]
+  if (isFillQuestion(item.questionId)) return list.map(value => String(value).trim() || '—').join('；')
+  return list.map(value => letters[Number(value)] ?? '—').join('、') || '—'
+}
 function confirmReset() { resetOpen.value = false; resetProgress() }
 </script>
 
@@ -135,7 +140,7 @@ function confirmReset() { resetOpen.value = false; resetProgress() }
               <span class="record-mark" :class="item.correct ? 'is-correct' : 'is-wrong'"><Icon :name="item.correct ? 'check' : 'close'" :size="13" /></span>
               <span class="record-body">
                 <strong>{{ stemOf(item.questionId) }}</strong>
-                <small>{{ dateLabel(item.at) }} · 你的选择 {{ letterOf(item.selected) }}</small>
+                <small>{{ dateLabel(item.at) }} · 你的{{ isFillQuestion(item.questionId) ? '作答' : '选择' }} {{ answerLabelOf(item) }}</small>
               </span>
               <span class="record-state" :class="{ 'is-wrong-text': !item.correct }">{{ item.correct ? '正确' : '错误' }}</span>
             </div>

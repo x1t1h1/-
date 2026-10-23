@@ -17,6 +17,7 @@ const chartTabs = computed(() => result.value?.charts ?? [])
 const activeChartId = ref('')
 const primaryChart = computed(() => chartTabs.value.find((chart) => chart.id === activeChartId.value) || chartTabs.value[0])
 const stateColumns = computed(() => result.value?.states[0]?.values ?? [])
+const isHtml = computed(() => Boolean(props.model.htmlUrl))
 
 interface SliderChangeEvent {
   detail: { value: number }
@@ -27,11 +28,12 @@ function onSliderChange(key: string, event: SliderChangeEvent): void {
 }
 
 function applyDefaults(): void {
-  const allowed = new Set(props.model.parameters.map((parameter) => parameter.key))
+  const parameters = props.model.parameters ?? []
+  const allowed = new Set(parameters.map((parameter) => parameter.key))
   for (const key of Object.keys(values)) {
     if (!allowed.has(key)) delete values[key]
   }
-  for (const parameter of props.model.parameters) values[parameter.key] = parameter.default
+  for (const parameter of parameters) values[parameter.key] = parameter.default
 }
 
 function onNumberInput(key: string, event: Event): void {
@@ -46,6 +48,11 @@ function compute(): void {
   if (computeTimer) {
     clearTimeout(computeTimer)
     computeTimer = undefined
+  }
+  if (!props.model.compute) {
+    result.value = null
+    error.value = ''
+    return
   }
   try {
     error.value = ''
@@ -91,6 +98,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="sim-layout">
     <section class="sim-main">
+      <iframe
+        v-if="isHtml"
+        class="html-sim-frame"
+        :src="model.htmlUrl"
+        :title="model.name"
+      ></iframe>
+
+      <template v-else>
       <section class="panel parameter-panel">
         <div class="section-title">
           <h2>参数设置 <span class="title-note">修改后自动计算</span></h2>
@@ -195,6 +210,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
       </template>
+      </template>
     </section>
 
     <aside class="sim-side">
@@ -216,6 +232,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .sim-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:20px;align-items:start}
 .sim-main{display:flex;flex-direction:column;gap:18px;min-width:0}
+.html-sim-frame{width:100%;height:78vh;min-height:560px;border:1px solid var(--border);border-radius:12px;background:#f7faf7}
 .parameter-panel{padding:22px}
 .parameter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px 18px}
 .parameter-field{display:flex;flex-direction:column;gap:7px;font-size:11px;color:#5d7164}

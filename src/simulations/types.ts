@@ -70,10 +70,12 @@ export interface SimulationModel {
   formulaNote?: string
   /** 可选：关联 course.ts 中的章节 id */
   chapterIds?: string[]
-  parameters: SimulationParameter[]
+  /** 可选：独立 HTML 交互实验的资源路径，如 '/static/simulations/water-steam-pv-ts.html'。提供后以 iframe 整体嵌入展示，不需要 parameters 与 compute。 */
+  htmlUrl?: string
+  parameters?: SimulationParameter[]
   /**
    * 纯函数：不访问 DOM、不发起网络请求、不依赖时间或随机数。
    * 输入不合法时抛出带中文说明的 Error，由页面统一展示。
    */
-  compute(values: Record<string, SimulationParamValue>): SimulationResult
+  compute?(values: Record<string, SimulationParamValue>): SimulationResult
 }
