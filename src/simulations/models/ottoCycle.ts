@@ -22,6 +22,13 @@ export const ottoCycle: SimulationModel = {
     { key: 'T1', label: '初温 T₁', unit: 'K', type: 'range', min: 250, max: 400, step: 5, default: 300 }
   ],
   compute(values): SimulationResult {
+    for (const parameter of ottoCycle.parameters ?? []) {
+      const value = values[parameter.key];
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${parameter.label}必须是有效数字`);
+      if ((parameter.min !== undefined && value < parameter.min) || (parameter.max !== undefined && value > parameter.max)) {
+        throw new Error(`${parameter.label}必须在 ${parameter.min} 至 ${parameter.max} ${parameter.unit ?? ''}之间`);
+      }
+    }
     const { r, k, T1, qin } = values as Record<string, number>;
     const P1 = 100; // 固定 100 kPa
     const cv = cvOf(k), v1 = R * T1 / P1, v2 = v1 / r;
@@ -60,7 +67,7 @@ export const ottoCycle: SimulationModel = {
         } else { // 等容
           const P = a.P + (b.P - a.P) * t;
           const T = a.T + (b.T - a.T) * t;
-          const s = a.s + (b.s - a.s) * t;
+          const s = a.s + cv * Math.log(T / a.T);
           pvSeg.push([a.v, P]);
           tsSeg.push([s, T]);
         }

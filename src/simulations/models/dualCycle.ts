@@ -24,6 +24,13 @@ export const dualCycle: SimulationModel = {
     { key: 'T1', label: '初温 T₁', unit: 'K', type: 'range', min: 250, max: 400, step: 5, default: 300 }
   ],
   compute(values): SimulationResult {
+    for (const parameter of dualCycle.parameters ?? []) {
+      const value = values[parameter.key];
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${parameter.label}必须是有效数字`);
+      if ((parameter.min !== undefined && value < parameter.min) || (parameter.max !== undefined && value > parameter.max)) {
+        throw new Error(`${parameter.label}必须在 ${parameter.min} 至 ${parameter.max} ${parameter.unit ?? ''}之间`);
+      }
+    }
     const { r, lam, rho, k, T1 } = values as Record<string, number>;
     const P1 = 100;
     const cv = cvOf(k), cp = cpOf(k), v1 = R * T1 / P1, v2 = v1 / r;
@@ -64,10 +71,11 @@ export const dualCycle: SimulationModel = {
           const v = a.v + (b.v - a.v) * t;
           const T = a.T + (b.T - a.T) * t;
           pvSeg.push([v, a.P]);
-          tsSeg.push([a.s + (b.s - a.s) * t, T]);
+          tsSeg.push([a.s + cp * Math.log(T / a.T), T]);
         } else { // 等容
+          const T = a.T + (b.T - a.T) * t;
           pvSeg.push([a.v, a.P + (b.P - a.P) * t]);
-          tsSeg.push([a.s + (b.s - a.s) * t, a.T + (b.T - a.T) * t]);
+          tsSeg.push([a.s + cv * Math.log(T / a.T), T]);
         }
       }
       pvPoints.push(pvSeg);

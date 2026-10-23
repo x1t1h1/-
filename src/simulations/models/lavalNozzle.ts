@@ -79,6 +79,13 @@ export const lavalNozzle: SimulationModel = {
     { key: 'k', label: '比热比 k', type: 'range', min: 1.2, max: 1.67, step: 0.01, default: 1.4 }
   ],
   compute(values): SimulationResult {
+    for (const parameter of lavalNozzle.parameters ?? []) {
+      const value = values[parameter.key];
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${parameter.label}必须是有效数字`);
+      if ((parameter.min !== undefined && value < parameter.min) || (parameter.max !== undefined && value > parameter.max)) {
+        throw new Error(`${parameter.label}必须在 ${parameter.min} 至 ${parameter.max} ${parameter.unit ?? ''}之间`);
+      }
+    }
     const { p0, T0, pb, At, AR, k } = values as Record<string, number>;
     if (pb >= p0) throw new Error('背压必须小于滞止压力');
 
@@ -168,8 +175,10 @@ export const lavalNozzle: SimulationModel = {
       }
       
       if (choked && shockX !== null && i > 0 && pxPoints[pxPoints.length-1][0] < shockX && x >= shockX) {
-        pxPoints.push([shockX, (pEff * MachToP(Ma1!, k)) / p0]);
-        pxPoints.push([shockX, (pEff * MachToP(Ma1!, k) * shock(Ma1!, k).p2p1) / p0]);
+        // 激波前静压由上游总压求得，跳变后再应用正激波静压比。
+        const pBeforeRatio = MachToP(Ma1!, k);
+        pxPoints.push([shockX, pBeforeRatio]);
+        pxPoints.push([shockX, pBeforeRatio * shock(Ma1!, k).p2p1]);
         maPoints.push([shockX, Ma1!]);
         maPoints.push([shockX, shock(Ma1!, k).Ma2]);
       }
@@ -178,20 +187,20 @@ export const lavalNozzle: SimulationModel = {
       maPoints.push([x, Ma]);
     }
 
-    const states: any[] = [
+    const states = [
       {
         label: '0 滞止状态',
-        values: [{ label: 'p', value: p0, unit: 'kPa' }, { label: 'T', value: T0, unit: 'K' }]
+        values: [{ label: 'p', value: p0, unit: 'kPa' }, { label: 'T', value: T0, unit: 'K' }, { label: 'Ma', value: 0, unit: '' }]
       }
     ];
     if (shockPre && shockPost) {
       states.push({
         label: 's₁ 激波前',
-        values: [{ label: 'p', value: shockPre.p, unit: 'kPa' }, { label: 'Ma', value: shockPre.Ma, unit: '' }]
+        values: [{ label: 'p', value: shockPre.p, unit: 'kPa' }, { label: 'T', value: shockPre.T, unit: 'K' }, { label: 'Ma', value: shockPre.Ma, unit: '' }]
       });
       states.push({
         label: 's₂ 激波后',
-        values: [{ label: 'p', value: shockPost.p, unit: 'kPa' }, { label: 'Ma', value: shockPost.Ma, unit: '' }]
+        values: [{ label: 'p', value: shockPost.p, unit: 'kPa' }, { label: 'T', value: shockPost.T, unit: 'K' }, { label: 'Ma', value: shockPost.Ma, unit: '' }]
       });
     }
     states.push({

@@ -53,6 +53,13 @@ export const convergentNozzle: SimulationModel = {
     { key: 'k', label: '比热比 k', type: 'range', min: 1.2, max: 1.67, step: 0.01, default: 1.4 }
   ],
   compute(values): SimulationResult {
+    for (const parameter of convergentNozzle.parameters ?? []) {
+      const value = values[parameter.key];
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${parameter.label}必须是有效数字`);
+      if ((parameter.min !== undefined && value < parameter.min) || (parameter.max !== undefined && value > parameter.max)) {
+        throw new Error(`${parameter.label}必须在 ${parameter.min} 至 ${parameter.max} ${parameter.unit ?? ''}之间`);
+      }
+    }
     const { p0, T0, pb, A2, k } = values as Record<string, number>;
     if (pb >= p0) throw new Error('背压必须小于滞止压力');
 
@@ -93,13 +100,14 @@ export const convergentNozzle: SimulationModel = {
       maPoints.push([x, Ma]);
     }
 
-    const states: any[] = [
+    const states = [
       {
         label: '0 滞止状态',
         values: [
           { label: 'p', value: p0, unit: 'kPa' },
           { label: 'T', value: T0, unit: 'K' },
-          { label: 'Ma', value: 0, unit: '' }
+          { label: 'Ma', value: 0, unit: '' },
+          { label: 'c', value: 0, unit: 'm/s' }
         ]
       },
       {
