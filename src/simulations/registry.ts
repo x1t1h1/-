@@ -1,9 +1,20 @@
 import type { SimulationModel } from './types'
+
+// 1. 导入原有的模型
 import { carnotCycleModel } from './models/carnotCycle'
 import { idealGasProcessModels } from './models/idealGasProcesses'
 import { waterSteamModel } from './models/waterSteam'
 import { polytropicProcessModel } from './models/polytropicProcess'
 import { psychrometricChartModel } from './models/psychrometricChart'
+
+// 2. 导入你新增的喷管模型
+import { convergentNozzle } from './models/convergentNozzle'
+import { lavalNozzle } from './models/lavalNozzle'
+
+// 3. 导入你新增的内燃机循环模型
+import { ottoCycle } from './models/ottoCycle'
+import { dieselCycle } from './models/dieselCycle'
+import { dualCycle } from './models/dualCycle'
 
 /**
  * 仿真模型注册表。
@@ -11,21 +22,34 @@ import { psychrometricChartModel } from './models/psychrometricChart'
  * 注册后，仿真首页会自动多一张实验卡片，并生成对应的独立详情页。
  */
 export const simulationModels: SimulationModel[] = [
+  // 原有模型
   carnotCycleModel,
   ...idealGasProcessModels,
+  
+  // 其他同学新增的模型
   waterSteamModel,
   polytropicProcessModel,
   psychrometricChartModel,
+
+  // 你新增的模型（喷管与内燃机循环）
+  convergentNozzle,
+  lavalNozzle,
+  ottoCycle,
+  dieselCycle,
+  dualCycle
 ]
 
 const byId = new Map<string, SimulationModel>()
 
 for (const model of simulationModels) {
+  // 检查 id 是否重复
   if (byId.has(model.id)) {
     throw new Error(`仿真模型 id 重复：${model.id}`)
   }
   byId.set(model.id, model)
 
+  // 检查参数默认值是否合法
+  // 这里采纳了别人加的 ?? []，防止 parameters 未定义时报错
   for (const parameter of model.parameters ?? []) {
     if (parameter.type === 'select') continue
     const value = Number(parameter.default)
